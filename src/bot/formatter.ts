@@ -7,8 +7,8 @@ const esc = (value: string): string =>
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 const resultBadge = (result?: "W" | "D" | "L"): string => {
-  if (result === "W") return "🟢 WIN";
-  if (result === "L") return "🔴 LOSS";
+  if (result === "W") return "🟢";
+  if (result === "L") return "🔴";
   if (result === "D") return "🟡 DRAW";
   return "";
 };
@@ -57,7 +57,7 @@ const formatRecentMatchesSection = (
   return [
     `<b>${title}</b> (proba: ${matches.length})`,
     ...matches.map((m) =>
-      `- ${m.date}: ${esc(m.homeTeam)} ${m.score} ${esc(m.awayTeam)}${m.resultForFocus ? ` (${resultBadge(m.resultForFocus)})` : ""}`
+      `- 📅 <b>${m.date}</b>\n  ${esc(m.homeTeam)} ${m.score} ${esc(m.awayTeam)}${m.resultForFocus ? ` (${resultBadge(m.resultForFocus)})` : ""}`
     )
   ].join("\n");
 };
