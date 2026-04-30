@@ -627,7 +627,8 @@ export class MatchRepository {
             teamId: Number(row?.team?.id),
             teamName: String(row?.team?.name ?? ""),
             points: Number(row?.points ?? 0),
-            played: Number(row?.all?.played ?? 0)
+            played: Number(row?.all?.played ?? 0),
+            description: String(row?.description ?? "")
           }))
           .filter(
             (row: LeagueTableRow) =>

@@ -70,6 +70,7 @@ export interface LeagueTableRow {
   teamName: string;
   points: number;
   played: number;
+  description?: string;
 }
 
 export interface HeadToHeadSummary {

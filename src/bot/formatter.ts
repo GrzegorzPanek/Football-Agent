@@ -52,13 +52,49 @@ const formatProbabilities = (result: AnalysisResult): string =>
 const formatLeagueTableSection = (result: AnalysisResult): string | undefined => {
   const rows = result.leagueTableRows ?? [];
   if (rows.length === 0) return undefined;
+
+  const zoneBadge = (description?: string): string => {
+    const normalized = String(description ?? "").toLowerCase();
+    if (
+      normalized.includes("relegation") ||
+      normalized.includes("descent") ||
+      normalized.includes("drop")
+    ) {
+      return "🔴";
+    }
+    if (normalized.includes("champions")) return "🔵";
+    if (normalized.includes("europa")) return "🟦";
+    if (normalized.includes("conference")) return "🔷";
+    return "⚪";
+  };
+
+  const zoneLabel = (description?: string): string => {
+    const normalized = String(description ?? "").toLowerCase();
+    if (
+      normalized.includes("relegation") ||
+      normalized.includes("descent") ||
+      normalized.includes("drop")
+    ) {
+      return "SPADEK";
+    }
+    if (normalized.includes("champions")) return "LM";
+    if (normalized.includes("europa")) return "LE";
+    if (normalized.includes("conference")) return "LKE";
+    return "";
+  };
+
   return [
     "<b>Tabela ligi (top):</b>",
     ...rows.map((row) => {
       const isSelected =
         row.teamId === result.match.homeTeam.id || row.teamId === result.match.awayTeam.id;
-      const teamName = isSelected ? `<b>${esc(row.teamName)}</b>` : esc(row.teamName);
-      return `- ${row.rank}. ${teamName} | pkt: ${row.points} | mecze: ${row.played}`;
+      const badge = zoneBadge(row.description);
+      const shortZone = zoneLabel(row.description);
+      const rawName = esc(row.teamName);
+      const emphasizedName =
+        badge === "🔴" ? `<b>🔴 ${rawName}</b>` : isSelected ? `<b>${rawName}</b>` : rawName;
+      const zoneSuffix = shortZone ? ` [${shortZone}]` : "";
+      return `- ${badge} ${row.rank}. ${emphasizedName}${zoneSuffix} | pkt: ${row.points} | mecze: ${row.played}`;
     })
   ].join("\n");
 };
