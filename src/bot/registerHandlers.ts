@@ -161,6 +161,7 @@ export const registerHandlers = (
     const buttons: Array<Array<{ text: string; callback_data: string }>> = [
       [{ text: `Analizuj wszystkie (${dateInput})`, callback_data: `dayall:${dateInput}` }]
     ];
+    buttons.push([{ text: "🔥 Top value (gole/BTTS)", callback_data: `dayvalue:${dateInput}` }]);
     buttons.push([{ text: "📚 LIGI", callback_data: "noop" }]);
     groupedLeagues.forEach((entry, idx) => {
       const label = `${entry.league} (${entry.leagueMatches.length})`.slice(0, 58);
@@ -223,6 +224,72 @@ export const registerHandlers = (
     await ctx.reply(`Zakonczono analize ${sentCount} meczow ligi "${leagueName}" na ${selectedDate}.`, {
       reply_markup: buildBackToDayMenuKeyboard(selectedDate)
     });
+  };
+
+  const runTopValueByDate = async (ctx: any, selectedDate: string): Promise<void> => {
+    await ctx.reply(`Szukam najlepszych value (gole/BTTS) dla ${selectedDate}, chwila...`);
+    const matches = await matchRepository.loadMatchesByDate(selectedDate);
+    if (matches.length === 0) {
+      await ctx.reply(`Brak meczow na ${selectedDate} w top europejskich ligach.`);
+      return;
+    }
+
+    const allowedMarkets = new Set([
+      "BTTS_YES",
+      "BTTS_NO",
+      "OVER_1_5",
+      "UNDER_1_5",
+      "OVER_2_5",
+      "UNDER_2_5"
+    ]);
+
+    const picks: Array<{
+      matchLabel: string;
+      market: string;
+      edge: number;
+      confidence: number;
+    }> = [];
+
+    for (const item of matches) {
+      try {
+        const dataset = await matchRepository.loadDataset(item.fixtureId);
+        const result = analysisEngine.analyze(dataset);
+        const best = result.valueSignals
+          .filter((signal) => allowedMarkets.has(signal.market))
+          .sort((a, b) => b.edge - a.edge)[0];
+        if (!best) continue;
+
+        picks.push({
+          matchLabel: `${item.homeTeam} vs ${item.awayTeam}`,
+          market: best.market,
+          edge: best.edge,
+          confidence: best.modelProbability
+        });
+      } catch (error) {
+        logger.warn({ error, fixtureId: item.fixtureId }, "Failed single match in top-value-by-date");
+      }
+    }
+
+    const sorted = picks.sort((a, b) => b.edge - a.edge).slice(0, 20);
+    if (sorted.length === 0) {
+      await ctx.reply(`Brak mocnych value dla goli/BTTS na ${selectedDate}.`, {
+        reply_markup: buildBackToDayMenuKeyboard(selectedDate)
+      });
+      return;
+    }
+
+    const body = [
+      `<b>Top value dnia ${selectedDate} (gole/BTTS):</b>`,
+      ...sorted.map(
+        (pick, idx) =>
+          `${idx + 1}. ${pick.matchLabel}\n- Rynek: ${pick.market}\n- Value edge: ${(pick.edge * 100).toFixed(
+            1
+          )}%\n- Szansa modelu: ${(pick.confidence * 100).toFixed(1)}%`
+      )
+    ].join("\n");
+
+    await sendHtmlInChunks(ctx, body);
+    await ctx.reply("Wrocic do menu dnia?", { reply_markup: buildBackToDayMenuKeyboard(selectedDate) });
   };
 
   const startKeyboard = {
@@ -427,6 +494,17 @@ export const registerHandlers = (
     } catch (error) {
       logger.error({ error, dateInput }, "Failed dayall callback");
       await ctx.reply("Nie udalo sie uruchomic analizy dla wybranego dnia.");
+    }
+  });
+
+  bot.action(/^dayvalue:(\d{4}-\d{2}-\d{2})$/, async (ctx: any) => {
+    const dateInput = ctx.match?.[1];
+    await ctx.answerCbQuery();
+    try {
+      await runTopValueByDate(ctx, dateInput);
+    } catch (error) {
+      logger.error({ error, dateInput }, "Failed dayvalue callback");
+      await ctx.reply("Nie udalo sie przygotowac listy top value dla wybranego dnia.");
     }
   });
 

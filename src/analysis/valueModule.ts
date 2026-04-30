@@ -52,6 +52,8 @@ export const detectValueSignals = (
     prediction.expectedHomeGoals,
     prediction.expectedAwayGoals
   );
+  const totalLambda = prediction.expectedHomeGoals + prediction.expectedAwayGoals;
+  const over15Probability = 1 - (poisson(0, totalLambda) + poisson(1, totalLambda));
 
   if (odds.bttsYes) {
     candidates.push({
@@ -75,6 +77,22 @@ export const detectValueSignals = (
       modelProbability: over25Probability,
       impliedProbability: impliedProbability(odds.over25),
       edge: over25Probability - impliedProbability(odds.over25)
+    });
+  }
+  if (odds.over15) {
+    candidates.push({
+      market: "OVER_1_5",
+      modelProbability: over15Probability,
+      impliedProbability: impliedProbability(odds.over15),
+      edge: over15Probability - impliedProbability(odds.over15)
+    });
+  }
+  if (odds.under15) {
+    candidates.push({
+      market: "UNDER_1_5",
+      modelProbability: 1 - over15Probability,
+      impliedProbability: impliedProbability(odds.under15),
+      edge: (1 - over15Probability) - impliedProbability(odds.under15)
     });
   }
   if (odds.under25) {

@@ -143,6 +143,8 @@ export const normalizeOdds = (oddsPayload: any): OddsSnapshot | undefined => {
 
   const bttsYes = avg(collectOdds("Both Teams Score", "Yes"));
   const bttsNo = avg(collectOdds("Both Teams Score", "No"));
+  const over15 = avg(collectOdds("Goals Over/Under", "Over 1.5"));
+  const under15 = avg(collectOdds("Goals Over/Under", "Under 1.5"));
   const over25 = avg(collectOdds("Goals Over/Under", "Over 2.5"));
   const under25 = avg(collectOdds("Goals Over/Under", "Under 2.5"));
 
@@ -152,6 +154,8 @@ export const normalizeOdds = (oddsPayload: any): OddsSnapshot | undefined => {
     away,
     ...(bttsYes ? { bttsYes } : {}),
     ...(bttsNo ? { bttsNo } : {}),
+    ...(over15 ? { over15 } : {}),
+    ...(under15 ? { under15 } : {}),
     ...(over25 ? { over25 } : {}),
     ...(under25 ? { under25 } : {})
   };

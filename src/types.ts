@@ -85,6 +85,8 @@ export interface OddsSnapshot {
   away: number;
   bttsYes?: number;
   bttsNo?: number;
+  over15?: number;
+  under15?: number;
   over25?: number;
   under25?: number;
 }
@@ -137,7 +139,16 @@ export interface MatchPrediction {
 }
 
 export interface ValueSignal {
-  market: "HOME" | "DRAW" | "AWAY" | "BTTS_YES" | "BTTS_NO" | "OVER_2_5" | "UNDER_2_5";
+  market:
+    | "HOME"
+    | "DRAW"
+    | "AWAY"
+    | "BTTS_YES"
+    | "BTTS_NO"
+    | "OVER_1_5"
+    | "UNDER_1_5"
+    | "OVER_2_5"
+    | "UNDER_2_5";
   modelProbability: number;
   impliedProbability: number;
   edge: number;
