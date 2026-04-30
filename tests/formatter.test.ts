@@ -28,8 +28,10 @@ describe("formatAnalysisMessage", () => {
         over35Pct: 0.2,
         avgCorners: 4.2,
         avgCards: 2.1,
+        avgShotsOnTarget: 5.1,
         cornersSamples: 5,
-        cardsSamples: 5
+        cardsSamples: 5,
+        shotsSamples: 5
       },
       awayAdvancedStats: {
         sampleSize: 5,
@@ -39,8 +41,10 @@ describe("formatAnalysisMessage", () => {
         over35Pct: 0.2,
         avgCorners: 3.8,
         avgCards: 2.6,
+        avgShotsOnTarget: 4.2,
         cornersSamples: 5,
-        cardsSamples: 5
+        cardsSamples: 5,
+        shotsSamples: 5
       },
       homeContext: {
         avgRestDays: 4.2,

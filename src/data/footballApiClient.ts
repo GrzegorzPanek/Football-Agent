@@ -35,7 +35,7 @@ export class FootballApiClient {
   async getHeadToHead(homeTeamId: number, awayTeamId: number): Promise<any> {
     return this.withRetry(() =>
       this.http.get("/fixtures/headtohead", {
-        params: { h2h: `${homeTeamId}-${awayTeamId}`, last: 5 }
+        params: { h2h: `${homeTeamId}-${awayTeamId}`, last: 20 }
       })
     );
   }

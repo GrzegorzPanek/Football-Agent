@@ -67,7 +67,7 @@ export class MatchRepository {
         const dateB = new Date(String(b?.fixture?.date ?? "")).getTime();
         return dateB - dateA;
       })
-      .slice(0, 10);
+      .slice(0, 8);
   }
 
   private formatDateOffset(days: number): string {
@@ -113,8 +113,10 @@ export class MatchRepository {
 
     let cornersSum = 0;
     let cardsSum = 0;
+    let shotsSum = 0;
     let cornersSamples = 0;
     let cardsSamples = 0;
+    let shotsSamples = 0;
 
     for (const fixture of finished) {
       const fixtureId = Number(fixture?.fixture?.id);
@@ -125,10 +127,12 @@ export class MatchRepository {
       const cornersRaw = teamStats.statistics.find((s: any) => s?.type === "Corner Kicks")?.value;
       const yellowRaw = teamStats.statistics.find((s: any) => s?.type === "Yellow Cards")?.value;
       const redRaw = teamStats.statistics.find((s: any) => s?.type === "Red Cards")?.value;
+      const shotsOnGoalRaw = teamStats.statistics.find((s: any) => s?.type === "Shots on Goal")?.value;
 
       const corners = this.parseNumericStat(cornersRaw);
       const yellow = this.parseNumericStat(yellowRaw);
       const red = this.parseNumericStat(redRaw);
+      const shotsOnGoal = this.parseNumericStat(shotsOnGoalRaw);
 
       if (typeof corners === "number") {
         cornersSum += corners;
@@ -137,6 +141,10 @@ export class MatchRepository {
       if (typeof yellow === "number" || typeof red === "number") {
         cardsSum += (yellow ?? 0) + (red ?? 0);
         cardsSamples += 1;
+      }
+      if (typeof shotsOnGoal === "number") {
+        shotsSum += shotsOnGoal;
+        shotsSamples += 1;
       }
     }
 
@@ -148,8 +156,10 @@ export class MatchRepository {
       over35Pct: over(3.5),
       avgCorners: cornersSamples > 0 ? cornersSum / cornersSamples : 0,
       avgCards: cardsSamples > 0 ? cardsSum / cardsSamples : 0,
+      avgShotsOnTarget: shotsSamples > 0 ? shotsSum / shotsSamples : 0,
       cornersSamples,
-      cardsSamples
+      cardsSamples,
+      shotsSamples
     };
   }
 
@@ -460,10 +470,21 @@ export class MatchRepository {
       cupRound
     );
 
-    const h2hFixtures =
-      Array.isArray(h2hFixturesApi) && h2hFixturesApi.length > 0
-        ? h2hFixturesApi
-        : this.buildFallbackH2HFixtures(match.homeTeam.id, match.awayTeam.id, homeFixtures, awayFixtures);
+    const fallbackH2H = this.buildFallbackH2HFixtures(match.homeTeam.id, match.awayTeam.id, homeFixtures, awayFixtures);
+    const mergedH2HMap = new Map<number, any>();
+    for (const item of [...(Array.isArray(h2hFixturesApi) ? h2hFixturesApi : []), ...fallbackH2H]) {
+      const fixtureId = Number(item?.fixture?.id);
+      if (Number.isFinite(fixtureId) && !mergedH2HMap.has(fixtureId)) {
+        mergedH2HMap.set(fixtureId, item);
+      }
+    }
+    const h2hFixtures = Array.from(mergedH2HMap.values())
+      .sort((a, b) => {
+        const dateA = new Date(String(a?.fixture?.date ?? "")).getTime();
+        const dateB = new Date(String(b?.fixture?.date ?? "")).getTime();
+        return dateB - dateA;
+      })
+      .slice(0, 8);
 
     const dataset: MatchDataset = {
       match,
@@ -476,7 +497,7 @@ export class MatchRepository {
       awayContext,
       homeRecentMatches: summarizeRecentMatches(match.homeTeam.id, homeFixtures, 10),
       awayRecentMatches: summarizeRecentMatches(match.awayTeam.id, awayFixtures, 10),
-      h2hRecentMatches: summarizeH2HMatches(h2hFixtures, match.homeTeam.id, match.awayTeam.id, 5),
+      h2hRecentMatches: summarizeH2HMatches(h2hFixtures, match.homeTeam.id, match.awayTeam.id, 8),
       odds: normalizeOdds(oddsPayload)
     };
 

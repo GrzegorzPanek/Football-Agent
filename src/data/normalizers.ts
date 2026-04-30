@@ -182,7 +182,7 @@ export const summarizeH2HMatches = (
   fixtures: any[],
   homeTeamId: number,
   awayTeamId: number,
-  limit = 5
+  limit = 8
 ): RecentMatch[] =>
   fixtures
     .filter((item) => {
@@ -194,10 +194,25 @@ export const summarizeH2HMatches = (
       return validPair && isFinishedFixture(item);
     })
     .slice(0, limit)
-    .map((item) => ({
-      date: String(item?.fixture?.date ?? "").slice(0, 10),
-      league: String(item?.league?.name ?? ""),
-      homeTeam: String(item?.teams?.home?.name ?? "Home"),
-      awayTeam: String(item?.teams?.away?.name ?? "Away"),
-      score: `${safe(item?.goals?.home)}-${safe(item?.goals?.away)}`
-    }));
+    .map((item) => {
+      const fixtureHomeId = safe(item?.teams?.home?.id);
+      const goalsHome = safe(item?.goals?.home);
+      const goalsAway = safe(item?.goals?.away);
+      const homeGoalsFromPerspective = fixtureHomeId === homeTeamId ? goalsHome : goalsAway;
+      const awayGoalsFromPerspective = fixtureHomeId === homeTeamId ? goalsAway : goalsHome;
+      const resultForFocus: "W" | "D" | "L" =
+        homeGoalsFromPerspective > awayGoalsFromPerspective
+          ? "W"
+          : homeGoalsFromPerspective < awayGoalsFromPerspective
+            ? "L"
+            : "D";
+
+      return {
+        date: String(item?.fixture?.date ?? "").slice(0, 10),
+        league: String(item?.league?.name ?? ""),
+        homeTeam: String(item?.teams?.home?.name ?? "Home"),
+        awayTeam: String(item?.teams?.away?.name ?? "Away"),
+        score: `${goalsHome}-${goalsAway}`,
+        resultForFocus
+      };
+    });

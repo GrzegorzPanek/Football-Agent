@@ -23,7 +23,7 @@ const formatBestBet = (result: AnalysisResult): string => {
     return "Najlepszy typ:\n- Brak";
   }
   return [
-    "Najlepszy typ:",
+    "<b>Najlepszy typ:</b>",
     `- Rynek: ${result.bestBet.market}`,
     `- Pewnosc modelu: ${pct(result.bestBet.confidence)}`,
     `- Uzasadnienie: ${result.bestBet.reason}`
@@ -32,7 +32,7 @@ const formatBestBet = (result: AnalysisResult): string => {
 
 const formatProbabilities = (result: AnalysisResult): string =>
   [
-    "Prawdopodobienstwa rynkow:",
+    "<b>Prawdopodobienstwa rynkow:</b>",
     `- 1 (home win): ${pct(result.marketOutlook.homeWin)}`,
     `- X (draw): ${pct(result.marketOutlook.draw)}`,
     `- 2 (away win): ${pct(result.marketOutlook.awayWin)}`,
@@ -48,9 +48,9 @@ const formatRecentMatchesSection = (
   title: string,
   matches: Array<{ date: string; homeTeam: string; awayTeam: string; score: string; resultForFocus?: "W" | "D" | "L" }>
 ): string => {
-  if (matches.length === 0) return `${title}\n- Brak danych`;
+  if (matches.length === 0) return `<b>${title}</b>\n- Brak danych`;
   return [
-    `${title} (proba: ${matches.length})`,
+    `<b>${title}</b> (proba: ${matches.length})`,
     ...matches.map((m) =>
       `- ${m.date}: ${m.homeTeam} ${m.score} ${m.awayTeam}${m.resultForFocus ? ` (${resultBadge(m.resultForFocus)})` : ""}`
     )
@@ -66,19 +66,22 @@ const formatAdvancedStatsSection = (
     over35Pct: number;
     avgCorners: number;
     avgCards: number;
+    avgShotsOnTarget: number;
     sampleSize: number;
     cornersSamples: number;
     cardsSamples: number;
+    shotsSamples: number;
   }
 ): string =>
   [
-    `Zaawansowane statystyki ${teamName}:`,
+    `<b>Zaawansowane statystyki ${teamName}:</b>`,
     `- Over 0.5: ${pct(stats.over05Pct)}`,
     `- Over 1.5: ${pct(stats.over15Pct)}`,
     `- Over 2.5: ${pct(stats.over25Pct)}`,
     `- Over 3.5: ${pct(stats.over35Pct)}`,
     `- Srednie rogi: ${stats.avgCorners.toFixed(2)} (proba: ${stats.cornersSamples})`,
     `- Srednie kartki: ${stats.avgCards.toFixed(2)} (proba: ${stats.cardsSamples})`,
+    `- Srednie celne strzaly: ${stats.avgShotsOnTarget.toFixed(2)} (proba: ${stats.shotsSamples})`,
     `- Liczba meczow do overow: ${stats.sampleSize}`
   ].join("\n");
 
@@ -87,7 +90,7 @@ const formatH2HAdvancedStats = (
   homeTeamName: string,
   awayTeamName: string
 ): string => {
-  if (matches.length === 0) return "Zaawansowane H2H:\n- Brak danych";
+  if (matches.length === 0) return "<b>Zaawansowane H2H:</b>\n- Brak danych";
 
   const totals = matches
     .map((m) => m.score.split("-").map((value) => Number(value.trim())))
@@ -101,7 +104,7 @@ const formatH2HAdvancedStats = (
     totals.length === 0 ? 0 : totals.reduce((acc, value) => acc + value, 0) / totals.length;
 
   return [
-    `Zaawansowane H2H (${homeTeamName} vs ${awayTeamName}) (proba: ${matches.length}):`,
+    `<b>Zaawansowane H2H (${homeTeamName} vs ${awayTeamName})</b> (proba: ${matches.length}):`,
     `- Over 0.5: ${over(0.5)}`,
     `- Over 1.5: ${over(1.5)}`,
     `- Over 2.5: ${over(2.5)}`,
@@ -124,7 +127,7 @@ const formatContextSection = (
   }
 ): string =>
   [
-    `Kontekst meczu ${teamName}:`,
+    `<b>Kontekst meczu ${teamName}:</b>`,
     `- Sredni odpoczynek: ${context.avgRestDays.toFixed(1)} dni`,
     `- Zmeczenie: ${pct(context.fatigueIndex)}`,
     `- Absencje kluczowych (injuries): ${context.absencesCount}`,

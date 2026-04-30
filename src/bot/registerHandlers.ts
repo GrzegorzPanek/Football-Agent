@@ -72,6 +72,16 @@ const buildDayPickerKeyboard = (): any => {
   return { inline_keyboard: rows };
 };
 
+const groupByLeague = (matches: Array<{ homeTeam: string; awayTeam: string; fixtureId: number; league: string }>) => {
+  const grouped = new Map<string, Array<{ homeTeam: string; awayTeam: string; fixtureId: number; league: string }>>();
+  for (const item of matches) {
+    const list = grouped.get(item.league) ?? [];
+    list.push(item);
+    grouped.set(item.league, list);
+  }
+  return Array.from(grouped.entries()).map(([league, leagueMatches]) => ({ league, leagueMatches }));
+};
+
 const parseAnalyzeInput = (input: string): { fixtureId?: number; home?: string; away?: string } => {
   const trimmed = input.trim();
   const asNumber = Number(trimmed);
@@ -107,10 +117,17 @@ export const registerHandlers = (
       { parse_mode: "HTML" }
     );
 
+    const groupedLeagues = groupByLeague(matches);
     const buttons: Array<Array<{ text: string; callback_data: string }>> = [
       [{ text: `Analizuj wszystkie (${dateInput})`, callback_data: `dayall:${dateInput}` }]
     ];
+    buttons.push([{ text: "— Ligi —", callback_data: "noop" }]);
+    groupedLeagues.forEach((entry, idx) => {
+      const label = `${entry.league} (${entry.leagueMatches.length})`.slice(0, 58);
+      buttons.push([{ text: label, callback_data: `leaguepick:${dateInput}:${idx}` }]);
+    });
 
+    buttons.push([{ text: "— Mecze —", callback_data: "noop" }]);
     for (const item of matches.slice(0, 60)) {
       const label = `${item.homeTeam} vs ${item.awayTeam}`.slice(0, 58);
       buttons.push([{ text: label, callback_data: `fixture:${item.fixtureId}` }]);
@@ -146,12 +163,36 @@ export const registerHandlers = (
     await ctx.reply(`Zakonczono analize ${sentCount} meczow na ${selectedDate}.`);
   };
 
+  const runLeagueDateAnalysis = async (ctx: any, selectedDate: string, leagueName: string): Promise<void> => {
+    await ctx.reply(`Analizuje lige "${leagueName}" na ${selectedDate}, chwila...`);
+    const matches = await matchRepository.loadMatchesByDate(selectedDate);
+    const leagueMatches = matches.filter((item) => item.league === leagueName);
+    if (leagueMatches.length === 0) {
+      await ctx.reply(`Brak meczow ligi "${leagueName}" na ${selectedDate}.`);
+      return;
+    }
+
+    let sentCount = 0;
+    for (const item of leagueMatches) {
+      try {
+        const dataset = await matchRepository.loadDataset(item.fixtureId);
+        const result = analysisEngine.analyze(dataset);
+        await ctx.reply(formatAnalysisMessage(result), { parse_mode: "HTML" });
+        sentCount += 1;
+      } catch (error) {
+        logger.warn({ error, fixtureId: item.fixtureId }, "Failed single match in league-date analysis");
+      }
+    }
+    await ctx.reply(`Zakonczono analize ${sentCount} meczow ligi "${leagueName}" na ${selectedDate}.`);
+  };
+
   const startKeyboard = {
     keyboard: [
-      ["/today", "/tomorrow"],
+      ["/today", "/tomorrow", "/day"],
       ["/day 2026-05-03"],
       ["/analyze today", "/analyze tomorrow"],
       ["/analyzeleague 2026-05-03 | Premier League"],
+      ["/analyze 2026-05-03"],
       ["/help"]
     ],
     resize_keyboard: true,
@@ -166,6 +207,7 @@ export const registerHandlers = (
       "/today - lista meczow na dzis",
       "/tomorrow - lista meczow na jutro",
       "/day YYYY-MM-DD - lista meczow na wskazany dzien",
+      "/day - klikalny wybor daty (10 dni do przodu)",
       "/analyze today - analiza wszystkich meczow dzisiaj",
       "/analyze tomorrow - analiza wszystkich meczow jutro",
       "/analyze YYYY-MM-DD - analiza wszystkich meczow na podana date",
@@ -231,28 +273,14 @@ export const registerHandlers = (
     try {
       await ctx.reply(`Analizuje lige "${leagueInput}" na ${dateInput}, chwila...`);
       const matches = await matchRepository.loadMatchesByDate(dateInput);
-      const leagueMatches = matches.filter((item) =>
-        item.league.toLowerCase().includes(leagueInput.toLowerCase())
+      const matchedLeague = groupByLeague(matches).find((entry) =>
+        entry.league.toLowerCase().includes(leagueInput.toLowerCase())
       );
-
-      if (leagueMatches.length === 0) {
+      if (!matchedLeague) {
         await ctx.reply(`Brak meczow ligi "${leagueInput}" na ${dateInput}.`);
         return;
       }
-
-      let sentCount = 0;
-      for (const item of leagueMatches) {
-        try {
-          const dataset = await matchRepository.loadDataset(item.fixtureId);
-          const result = analysisEngine.analyze(dataset);
-          await ctx.reply(formatAnalysisMessage(result), { parse_mode: "HTML" });
-          sentCount += 1;
-        } catch (error) {
-          logger.warn({ error, fixtureId: item.fixtureId }, "Failed single match in /analyzeleague");
-        }
-      }
-
-      await ctx.reply(`Zakonczono analize ${sentCount} meczow ligi "${leagueInput}" na ${dateInput}.`);
+      await runLeagueDateAnalysis(ctx, dateInput, matchedLeague.league);
     } catch (error) {
       logger.error({ error, dateInput, leagueInput }, "Failed analyzeleague command");
       await ctx.reply("Nie udalo sie przygotowac analizy ligi dla tej daty.");
@@ -310,6 +338,60 @@ export const registerHandlers = (
     }
   });
 
+  bot.action(/^leaguepick:(\d{4}-\d{2}-\d{2}):(\d+)$/, async (ctx: any) => {
+    const dateInput = ctx.match?.[1];
+    const leagueIndex = Number(ctx.match?.[2] ?? -1);
+    await ctx.answerCbQuery();
+    try {
+      const matches = await matchRepository.loadMatchesByDate(dateInput);
+      const grouped = groupByLeague(matches);
+      const selected = grouped[leagueIndex];
+      if (!selected) {
+        await ctx.reply("Nie znaleziono ligi dla tego wyboru.");
+        return;
+      }
+
+      await ctx.reply(
+        formatGroupedMatches(`Mecze ligi ${selected.league} na ${dateInput}:`, selected.leagueMatches),
+        { parse_mode: "HTML" }
+      );
+
+      const buttons: Array<Array<{ text: string; callback_data: string }>> = [
+        [{ text: `Analizuj cala lige (${selected.league})`, callback_data: `leagueall:${dateInput}:${leagueIndex}` }],
+        [{ text: "Wroc do listy dni", callback_data: "daymenu" }]
+      ];
+      for (const item of selected.leagueMatches) {
+        const label = `${item.homeTeam} vs ${item.awayTeam}`.slice(0, 58);
+        buttons.push([{ text: label, callback_data: `fixture:${item.fixtureId}` }]);
+      }
+      await ctx.reply("Wybierz mecz z ligi lub analizuj cala lige:", {
+        reply_markup: { inline_keyboard: buttons }
+      });
+    } catch (error) {
+      logger.error({ error, dateInput, leagueIndex }, "Failed leaguepick callback");
+      await ctx.reply("Nie udalo sie pobrac listy meczow tej ligi.");
+    }
+  });
+
+  bot.action(/^leagueall:(\d{4}-\d{2}-\d{2}):(\d+)$/, async (ctx: any) => {
+    const dateInput = ctx.match?.[1];
+    const leagueIndex = Number(ctx.match?.[2] ?? -1);
+    await ctx.answerCbQuery();
+    try {
+      const matches = await matchRepository.loadMatchesByDate(dateInput);
+      const grouped = groupByLeague(matches);
+      const selected = grouped[leagueIndex];
+      if (!selected) {
+        await ctx.reply("Nie znaleziono ligi dla tego wyboru.");
+        return;
+      }
+      await runLeagueDateAnalysis(ctx, dateInput, selected.league);
+    } catch (error) {
+      logger.error({ error, dateInput, leagueIndex }, "Failed leagueall callback");
+      await ctx.reply("Nie udalo sie uruchomic analizy wybranej ligi.");
+    }
+  });
+
   bot.action(/^dayall:(\d{4}-\d{2}-\d{2})$/, async (ctx: any) => {
     const dateInput = ctx.match?.[1];
     await ctx.answerCbQuery();
@@ -333,5 +415,14 @@ export const registerHandlers = (
       logger.error({ error, fixtureId }, "Failed fixture callback");
       await ctx.reply("Nie udalo sie pobrac analizy dla wybranego meczu.");
     }
+  });
+
+  bot.action("daymenu", async (ctx: any) => {
+    await ctx.answerCbQuery();
+    await ctx.reply("Wybierz dzien:", { reply_markup: buildDayPickerKeyboard() });
+  });
+
+  bot.action("noop", async (ctx: any) => {
+    await ctx.answerCbQuery();
   });
 };

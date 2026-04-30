@@ -43,8 +43,10 @@ export interface TeamAdvancedStats {
   over35Pct: number;
   avgCorners: number;
   avgCards: number;
+  avgShotsOnTarget: number;
   cornersSamples: number;
   cardsSamples: number;
+  shotsSamples: number;
 }
 
 export interface TeamContextSignals {
