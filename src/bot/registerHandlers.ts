@@ -89,7 +89,7 @@ export const registerHandlers = (
 ): void => {
   const showMainMenu = async (ctx: any): Promise<void> => {
     // Clear old reply keyboard (slash commands) and always show inline menu only.
-    await ctx.reply(" ", { reply_markup: { remove_keyboard: true } });
+    await ctx.reply("Odpalam menu...", { reply_markup: { remove_keyboard: true } });
     await ctx.reply("Menu glowne:", { reply_markup: startKeyboard });
   };
 
