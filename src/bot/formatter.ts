@@ -1,6 +1,11 @@
 import { AnalysisResult, ValueSignal } from "../types";
 
 const pct = (value: number): string => `${(value * 100).toFixed(1)}%`;
+const esc = (value: string): string =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 const resultBadge = (result?: "W" | "D" | "L"): string => {
   if (result === "W") return "🟢 WIN";
   if (result === "L") return "🔴 LOSS";
@@ -13,7 +18,7 @@ const describeSignals = (signals: ValueSignal[]): string => {
   return signals
     .map(
       (item) =>
-        `- ${item.market}: model ${pct(item.modelProbability)}, implied ${pct(item.impliedProbability)}, edge ${pct(item.edge)}`
+        `- ${esc(item.market)}: model ${pct(item.modelProbability)}, implied ${pct(item.impliedProbability)}, edge ${pct(item.edge)}`
     )
     .join("\n");
 };
@@ -24,9 +29,9 @@ const formatBestBet = (result: AnalysisResult): string => {
   }
   return [
     "<b>Najlepszy typ:</b>",
-    `- Rynek: ${result.bestBet.market}`,
+    `- Rynek: ${esc(result.bestBet.market)}`,
     `- Pewnosc modelu: ${pct(result.bestBet.confidence)}`,
-    `- Uzasadnienie: ${result.bestBet.reason}`
+    `- Uzasadnienie: ${esc(result.bestBet.reason)}`
   ].join("\n");
 };
 
@@ -52,7 +57,7 @@ const formatRecentMatchesSection = (
   return [
     `<b>${title}</b> (proba: ${matches.length})`,
     ...matches.map((m) =>
-      `- ${m.date}: ${m.homeTeam} ${m.score} ${m.awayTeam}${m.resultForFocus ? ` (${resultBadge(m.resultForFocus)})` : ""}`
+      `- ${m.date}: ${esc(m.homeTeam)} ${m.score} ${esc(m.awayTeam)}${m.resultForFocus ? ` (${resultBadge(m.resultForFocus)})` : ""}`
     )
   ].join("\n");
 };
@@ -74,7 +79,7 @@ const formatAdvancedStatsSection = (
   }
 ): string =>
   [
-    `<b>Zaawansowane statystyki ${teamName}:</b>`,
+    `<b>Zaawansowane statystyki ${esc(teamName)}:</b>`,
     `- Over 0.5: ${pct(stats.over05Pct)}`,
     `- Over 1.5: ${pct(stats.over15Pct)}`,
     `- Over 2.5: ${pct(stats.over25Pct)}`,
@@ -104,7 +109,7 @@ const formatH2HAdvancedStats = (
     totals.length === 0 ? 0 : totals.reduce((acc, value) => acc + value, 0) / totals.length;
 
   return [
-    `<b>Zaawansowane H2H (${homeTeamName} vs ${awayTeamName})</b> (proba: ${matches.length}):`,
+    `<b>Zaawansowane H2H (${esc(homeTeamName)} vs ${esc(awayTeamName)})</b> (proba: ${matches.length}):`,
     `- Over 0.5: ${over(0.5)}`,
     `- Over 1.5: ${over(1.5)}`,
     `- Over 2.5: ${over(2.5)}`,
@@ -127,13 +132,13 @@ const formatContextSection = (
   }
 ): string =>
   [
-    `<b>Kontekst meczu ${teamName}:</b>`,
+    `<b>Kontekst meczu ${esc(teamName)}:</b>`,
     `- Sredni odpoczynek: ${context.avgRestDays.toFixed(1)} dni`,
     `- Zmeczenie: ${pct(context.fatigueIndex)}`,
     `- Absencje kluczowych (injuries): ${context.absencesCount}`,
-    `- Lista absencji: ${context.absences.length > 0 ? context.absences.slice(0, 12).join(", ") : "brak danych"}`,
+    `- Lista absencji: ${context.absences.length > 0 ? esc(context.absences.slice(0, 12).join(", ")) : "brak danych"}`,
     `- Motywacja/stawka: ${pct(context.motivationIndex)}`,
-    `- Powod motywacji: ${context.motivationReason}`,
+    `- Powod motywacji: ${esc(context.motivationReason)}`,
     `- Tracone gole (ostatnie 10): ${context.concededLastFiveAvg.toFixed(2)}`,
     `- Czyste konta (ostatnie 10): ${context.cleanSheetsLastFive}`
   ].join("\n");
@@ -144,9 +149,9 @@ export const formatAnalysisMessage = (result: AnalysisResult): string => {
     `- Home win: ${pct(result.prediction.homeWinProbability)}`,
     `- Draw: ${pct(result.prediction.drawProbability)}`,
     `- Away win: ${pct(result.prediction.awayWinProbability)}`,
-    `- Expected goals: ${result.match.homeTeam.name} ${result.prediction.expectedHomeGoals.toFixed(
+    `- Expected goals: ${esc(result.match.homeTeam.name)} ${result.prediction.expectedHomeGoals.toFixed(
       2
-    )} - ${result.prediction.expectedAwayGoals.toFixed(2)} ${result.match.awayTeam.name}`
+    )} - ${result.prediction.expectedAwayGoals.toFixed(2)} ${esc(result.match.awayTeam.name)}`
   ].join("\n");
 
   const statsSectionFormatted = ["<b>Statystyki:</b>", ...result.statsSummary.map((line) => `- ${line}`)].join("\n");
@@ -154,11 +159,11 @@ export const formatAnalysisMessage = (result: AnalysisResult): string => {
   const valueSection = ["<b>Value signals:</b>", describeSignals(result.valueSignals)].join("\n");
   const bestBetSection = formatBestBet(result);
   const homeRecentSection = formatRecentMatchesSection(
-    `Ostatnie mecze ${result.match.homeTeam.name}:`,
+    `Ostatnie mecze ${esc(result.match.homeTeam.name)}:`,
     result.homeRecentMatches
   );
   const awayRecentSection = formatRecentMatchesSection(
-    `Ostatnie mecze ${result.match.awayTeam.name}:`,
+    `Ostatnie mecze ${esc(result.match.awayTeam.name)}:`,
     result.awayRecentMatches
   );
   const h2hRecentSection = formatRecentMatchesSection("Bezposrednie mecze H2H:", result.h2hRecentMatches);
@@ -180,8 +185,8 @@ export const formatAnalysisMessage = (result: AnalysisResult): string => {
   const probabilitiesSection = formatProbabilities(result);
 
   return [
-    `<b>Mecz:</b> ${result.match.homeTeam.name} vs ${result.match.awayTeam.name}`,
-    `<b>Liga:</b> <b>${result.match.league}</b>`,
+    `<b>Mecz:</b> ${esc(result.match.homeTeam.name)} vs ${esc(result.match.awayTeam.name)}`,
+    `<b>Liga:</b> <b>${esc(result.match.league)}</b>`,
     predictionSection,
     statsSectionFormatted,
     homeRecentSection,

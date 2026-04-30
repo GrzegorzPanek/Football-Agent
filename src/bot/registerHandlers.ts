@@ -121,13 +121,13 @@ export const registerHandlers = (
     const buttons: Array<Array<{ text: string; callback_data: string }>> = [
       [{ text: `Analizuj wszystkie (${dateInput})`, callback_data: `dayall:${dateInput}` }]
     ];
-    buttons.push([{ text: "— Ligi —", callback_data: "noop" }]);
+    buttons.push([{ text: "📚 LIGI", callback_data: "noop" }]);
     groupedLeagues.forEach((entry, idx) => {
       const label = `${entry.league} (${entry.leagueMatches.length})`.slice(0, 58);
       buttons.push([{ text: label, callback_data: `leaguepick:${dateInput}:${idx}` }]);
     });
 
-    buttons.push([{ text: "— Mecze —", callback_data: "noop" }]);
+    buttons.push([{ text: "⚽ MECZE", callback_data: "noop" }]);
     for (const item of matches.slice(0, 60)) {
       const label = `${item.homeTeam} vs ${item.awayTeam}`.slice(0, 58);
       buttons.push([{ text: label, callback_data: `fixture:${item.fixtureId}` }]);
@@ -200,22 +200,8 @@ export const registerHandlers = (
   } as const;
 
   bot.start((ctx: any) => {
-    const startMessage = [
-      "Czesc! Jestem agentem do analizy meczow pilkarskich.",
-      "",
-      "Dostepne komendy:",
-      "/today - lista meczow na dzis",
-      "/tomorrow - lista meczow na jutro",
-      "/day YYYY-MM-DD - lista meczow na wskazany dzien",
-      "/day - klikalny wybor daty (10 dni do przodu)",
-      "/analyze today - analiza wszystkich meczow dzisiaj",
-      "/analyze tomorrow - analiza wszystkich meczow jutro",
-      "/analyze YYYY-MM-DD - analiza wszystkich meczow na podana date",
-      "/analyzeleague YYYY-MM-DD | NAZWA_LIGI - analiza po konkretnej lidze i dacie",
-      "/analyze <fixtureId> - szczegolowa analiza wybranego meczu",
-      "/analyze TeamA vs TeamB - wyszukanie meczu po nazwach druzyn",
-      "/help - skrot uzycia"
-    ].join("\n");
+    const startMessage =
+      "Czesc! Wybierz opcje z menu przyciskow ponizej.\n\nDla pelnej listy komend wpisz /help.";
     return ctx.reply(startMessage, { reply_markup: startKeyboard });
   });
 
