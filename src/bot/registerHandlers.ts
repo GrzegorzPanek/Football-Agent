@@ -105,6 +105,52 @@ export const registerHandlers = (
   matchRepository: MatchRepository,
   analysisEngine: AnalysisEngine
 ): void => {
+  const sendHtmlInChunks = async (ctx: any, text: string, maxLength = 3800): Promise<void> => {
+    if (text.length <= maxLength) {
+      await ctx.reply(text, { parse_mode: "HTML" });
+      return;
+    }
+
+    const sections = text.split("\n\n");
+    const chunks: string[] = [];
+    let current = "";
+
+    for (const section of sections) {
+      const candidate = current ? `${current}\n\n${section}` : section;
+      if (candidate.length <= maxLength) {
+        current = candidate;
+        continue;
+      }
+
+      if (current) chunks.push(current);
+
+      if (section.length <= maxLength) {
+        current = section;
+        continue;
+      }
+
+      // Fallback for exceptionally long section: split by lines.
+      const lines = section.split("\n");
+      let lineChunk = "";
+      for (const line of lines) {
+        const lineCandidate = lineChunk ? `${lineChunk}\n${line}` : line;
+        if (lineCandidate.length <= maxLength) {
+          lineChunk = lineCandidate;
+        } else {
+          if (lineChunk) chunks.push(lineChunk);
+          lineChunk = line;
+        }
+      }
+      current = lineChunk;
+    }
+
+    if (current) chunks.push(current);
+
+    for (const chunk of chunks) {
+      await ctx.reply(chunk, { parse_mode: "HTML" });
+    }
+  };
+
   const sendDateMatchesMenu = async (ctx: any, dateInput: string): Promise<void> => {
     const matches = await matchRepository.loadMatchesByDate(dateInput);
     if (matches.length === 0) {
@@ -150,7 +196,7 @@ export const registerHandlers = (
       try {
         const dataset = await matchRepository.loadDataset(item.fixtureId);
         const result = analysisEngine.analyze(dataset);
-        await ctx.reply(formatAnalysisMessage(result), { parse_mode: "HTML" });
+        await sendHtmlInChunks(ctx, formatAnalysisMessage(result));
         sentCount += 1;
       } catch (error) {
         logger.warn({ error, fixtureId: item.fixtureId }, "Failed single match in date analysis");
@@ -177,7 +223,7 @@ export const registerHandlers = (
       try {
         const dataset = await matchRepository.loadDataset(item.fixtureId);
         const result = analysisEngine.analyze(dataset);
-        await ctx.reply(formatAnalysisMessage(result), { parse_mode: "HTML" });
+        await sendHtmlInChunks(ctx, formatAnalysisMessage(result));
         sentCount += 1;
       } catch (error) {
         logger.warn({ error, fixtureId: item.fixtureId }, "Failed single match in league-date analysis");
@@ -187,21 +233,22 @@ export const registerHandlers = (
   };
 
   const startKeyboard = {
-    keyboard: [
-      ["/today", "/tomorrow", "/day"],
-      ["/day 2026-05-03"],
-      ["/analyze today", "/analyze tomorrow"],
-      ["/analyzeleague 2026-05-03 | Premier League"],
-      ["/analyze 2026-05-03"],
-      ["/help"]
-    ],
-    resize_keyboard: true,
-    one_time_keyboard: false
+    inline_keyboard: [
+      [
+        { text: "Dzisiaj", callback_data: "start:today" },
+        { text: "Jutro", callback_data: "start:tomorrow" }
+      ],
+      [{ text: "Wybierz dzien", callback_data: "start:daypicker" }],
+      [
+        { text: "Analizuj dzisiaj", callback_data: "start:analyze:today" },
+        { text: "Analizuj jutro", callback_data: "start:analyze:tomorrow" }
+      ],
+      [{ text: "Pomoc (/help)", callback_data: "start:help" }]
+    ]
   } as const;
 
   bot.start((ctx: any) => {
-    const startMessage =
-      "Czesc! Wybierz opcje z menu przyciskow ponizej.\n\nDla pelnej listy komend wpisz /help.";
+    const startMessage = "Menu glowne:";
     return ctx.reply(startMessage, { reply_markup: startKeyboard });
   });
 
@@ -306,7 +353,7 @@ export const registerHandlers = (
 
       const dataset = await matchRepository.loadDataset(fixtureId);
       const result = analysisEngine.analyze(dataset);
-      await ctx.reply(formatAnalysisMessage(result), { parse_mode: "HTML" });
+      await sendHtmlInChunks(ctx, formatAnalysisMessage(result));
     } catch (error) {
       logger.error({ error, query }, "Failed to analyze fixture");
       await ctx.reply("Nie udalo sie pobrac danych dla tego meczu. Sprobuj ponownie lub uzyj /today.");
@@ -396,7 +443,7 @@ export const registerHandlers = (
       await ctx.reply("Analizuje wybrany mecz, chwila...");
       const dataset = await matchRepository.loadDataset(fixtureId);
       const result = analysisEngine.analyze(dataset);
-      await ctx.reply(formatAnalysisMessage(result), { parse_mode: "HTML" });
+      await sendHtmlInChunks(ctx, formatAnalysisMessage(result));
     } catch (error) {
       logger.error({ error, fixtureId }, "Failed fixture callback");
       await ctx.reply("Nie udalo sie pobrac analizy dla wybranego meczu.");
@@ -410,5 +457,35 @@ export const registerHandlers = (
 
   bot.action("noop", async (ctx: any) => {
     await ctx.answerCbQuery();
+  });
+
+  bot.action("start:today", async (ctx: any) => {
+    await ctx.answerCbQuery();
+    await sendDateMatchesMenu(ctx, datePlusDays(0));
+  });
+
+  bot.action("start:tomorrow", async (ctx: any) => {
+    await ctx.answerCbQuery();
+    await sendDateMatchesMenu(ctx, datePlusDays(1));
+  });
+
+  bot.action("start:daypicker", async (ctx: any) => {
+    await ctx.answerCbQuery();
+    await ctx.reply("Wybierz dzien:", { reply_markup: buildDayPickerKeyboard() });
+  });
+
+  bot.action("start:analyze:today", async (ctx: any) => {
+    await ctx.answerCbQuery();
+    await runFullDateAnalysis(ctx, datePlusDays(0));
+  });
+
+  bot.action("start:analyze:tomorrow", async (ctx: any) => {
+    await ctx.answerCbQuery();
+    await runFullDateAnalysis(ctx, datePlusDays(1));
+  });
+
+  bot.action("start:help", async (ctx: any) => {
+    await ctx.answerCbQuery();
+    await ctx.reply(usage);
   });
 };
