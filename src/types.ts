@@ -96,6 +96,10 @@ export interface OddsTrendInfo {
   homeDelta?: number;
   drawDelta?: number;
   awayDelta?: number;
+  bttsYesDelta?: number;
+  bttsNoDelta?: number;
+  over25Delta?: number;
+  under25Delta?: number;
   sentimentSummary: string;
   strongestMove?: string;
 }

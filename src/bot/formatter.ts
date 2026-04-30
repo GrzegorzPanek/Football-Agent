@@ -62,6 +62,10 @@ const formatOddsTrendSection = (result: AnalysisResult): string | undefined => {
     `- Zmiana 24h HOME: ${fmt(trend.homeDelta)}`,
     `- Zmiana 24h DRAW: ${fmt(trend.drawDelta)}`,
     `- Zmiana 24h AWAY: ${fmt(trend.awayDelta)}`,
+    `- Zmiana 24h BTTS YES: ${fmt(trend.bttsYesDelta)}`,
+    `- Zmiana 24h BTTS NO: ${fmt(trend.bttsNoDelta)}`,
+    `- Zmiana 24h OVER 2.5: ${fmt(trend.over25Delta)}`,
+    `- Zmiana 24h UNDER 2.5: ${fmt(trend.under25Delta)}`,
     `- Punkt odniesienia: ${reference}`,
     `- Sentyment rynku: ${esc(trend.sentimentSummary)}`,
     `- Najmocniejszy ruch: ${esc(trend.strongestMove ?? "brak danych")}`

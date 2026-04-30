@@ -77,6 +77,14 @@ export class MatchRepository {
     const homeDelta = delta(odds.home, reference?.odds.home);
     const drawDelta = delta(odds.draw, reference?.odds.draw);
     const awayDelta = delta(odds.away, reference?.odds.away);
+    const bttsYesDelta =
+      typeof odds.bttsYes === "number" ? delta(odds.bttsYes, reference?.odds.bttsYes) : undefined;
+    const bttsNoDelta =
+      typeof odds.bttsNo === "number" ? delta(odds.bttsNo, reference?.odds.bttsNo) : undefined;
+    const over25Delta =
+      typeof odds.over25 === "number" ? delta(odds.over25, reference?.odds.over25) : undefined;
+    const under25Delta =
+      typeof odds.under25 === "number" ? delta(odds.under25, reference?.odds.under25) : undefined;
 
     const implied = {
       home: 1 / odds.home,
@@ -99,7 +107,11 @@ export class MatchRepository {
     const moves = [
       { label: "HOME", delta: homeDelta },
       { label: "DRAW", delta: drawDelta },
-      { label: "AWAY", delta: awayDelta }
+      { label: "AWAY", delta: awayDelta },
+      { label: "BTTS_YES", delta: bttsYesDelta },
+      { label: "BTTS_NO", delta: bttsNoDelta },
+      { label: "OVER_2_5", delta: over25Delta },
+      { label: "UNDER_2_5", delta: under25Delta }
     ].filter((item) => typeof item.delta === "number") as Array<{ label: string; delta: number }>;
 
     const strongestMove =
@@ -114,6 +126,10 @@ export class MatchRepository {
       homeDelta,
       drawDelta,
       awayDelta,
+      bttsYesDelta,
+      bttsNoDelta,
+      over25Delta,
+      under25Delta,
       sentimentSummary,
       strongestMove: strongestMove
         ? `${strongestMove.label} ${strongestMove.delta < 0 ? "spadl" : strongestMove.delta > 0 ? "wzrosl" : "bez zmian"} o ${Math.abs(strongestMove.delta).toFixed(2)}`
