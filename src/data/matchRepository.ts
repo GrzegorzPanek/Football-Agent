@@ -1,0 +1,453 @@
+import { appCache } from "./cache";
+import { FootballApiClient } from "./footballApiClient";
+import {
+  normalizeH2H,
+  normalizeMatchInfo,
+  normalizeOdds,
+  normalizeTeamForm,
+  normalizeTeamFormFromStatistics,
+  summarizeH2HMatches,
+  summarizeRecentMatches
+} from "./normalizers";
+import { MatchCard, MatchDataset, TeamAdvancedStats, TeamContextSignals } from "../types";
+import { logger } from "../utils/logger";
+
+const TOP_EUROPEAN_LEAGUE_IDS = new Set<number>([
+  39, // Premier League
+  140, // La Liga
+  135, // Serie A
+  78, // Bundesliga
+  61, // Ligue 1
+  88, // Eredivisie
+  94, // Primeira Liga
+  203, // Super Lig
+  106, // Ekstraklasa
+  107, // 1. Liga (PL)
+  119, // (legacy mapping used in some feeds)
+  271, // Superliga (Denmark)
+  2, // UEFA Champions League
+  3, // UEFA Europa League
+  848 // UEFA Conference League
+]);
+
+const EXTRA_LEAGUE_NAME_HINTS = ["superliga"];
+
+const isAllowedPolishLeague = (leagueNameRaw: string, countryRaw: string): boolean => {
+  const leagueName = leagueNameRaw.toLowerCase();
+  const country = countryRaw.toLowerCase();
+  if (!country.includes("poland")) return false;
+  return leagueName.includes("ekstraklasa") || leagueName === "1. liga" || leagueName.includes(" i liga");
+};
+
+export class MatchRepository {
+  constructor(private readonly apiClient: FootballApiClient) {}
+
+  private formatDateOffset(days: number): string {
+    const date = new Date();
+    date.setDate(date.getDate() + days);
+    return date.toISOString().slice(0, 10);
+  }
+
+  private isValidDateString(value: string): boolean {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const parsed = new Date(value);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+  }
+
+  private isFinishedFixture(item: any): boolean {
+    const status = String(item?.fixture?.status?.short ?? "").toUpperCase();
+    return ["FT", "AET", "PEN"].includes(status);
+  }
+
+  private parseNumericStat(value: unknown): number | undefined {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string") {
+      const cleaned = value.replace("%", "").trim();
+      const parsed = Number(cleaned);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    return undefined;
+  }
+
+  private computeAdvancedStats(teamId: number, recentFixtures: any[], fixtureStatsById: Map<number, any[]>): TeamAdvancedStats {
+    const finished = recentFixtures
+      .filter((item) => this.isFinishedFixture(item))
+      .slice(0, 10);
+
+    const goalTotals = finished.map((item) => {
+      const home = Number(item?.goals?.home ?? 0);
+      const away = Number(item?.goals?.away ?? 0);
+      return home + away;
+    });
+    const sampleSize = goalTotals.length || 1;
+    const over = (line: number): number =>
+      goalTotals.length === 0 ? 0 : goalTotals.filter((total) => total > line).length / sampleSize;
+
+    let cornersSum = 0;
+    let cardsSum = 0;
+    let cornersSamples = 0;
+    let cardsSamples = 0;
+
+    for (const fixture of finished) {
+      const fixtureId = Number(fixture?.fixture?.id);
+      const statsRows = fixtureStatsById.get(fixtureId) ?? [];
+      const teamStats = statsRows.find((row: any) => Number(row?.team?.id) === teamId);
+      if (!teamStats || !Array.isArray(teamStats.statistics)) continue;
+
+      const cornersRaw = teamStats.statistics.find((s: any) => s?.type === "Corner Kicks")?.value;
+      const yellowRaw = teamStats.statistics.find((s: any) => s?.type === "Yellow Cards")?.value;
+      const redRaw = teamStats.statistics.find((s: any) => s?.type === "Red Cards")?.value;
+
+      const corners = this.parseNumericStat(cornersRaw);
+      const yellow = this.parseNumericStat(yellowRaw);
+      const red = this.parseNumericStat(redRaw);
+
+      if (typeof corners === "number") {
+        cornersSum += corners;
+        cornersSamples += 1;
+      }
+      if (typeof yellow === "number" || typeof red === "number") {
+        cardsSum += (yellow ?? 0) + (red ?? 0);
+        cardsSamples += 1;
+      }
+    }
+
+    return {
+      sampleSize: goalTotals.length,
+      over05Pct: over(0.5),
+      over15Pct: over(1.5),
+      over25Pct: over(2.5),
+      over35Pct: over(3.5),
+      avgCorners: cornersSamples > 0 ? cornersSum / cornersSamples : 0,
+      avgCards: cardsSamples > 0 ? cardsSum / cardsSamples : 0,
+      cornersSamples,
+      cardsSamples
+    };
+  }
+
+  private computeContextSignals(
+    teamId: number,
+    recentFixtures: any[],
+    matchDateIso: string,
+    injuries: string[],
+    standingsRow: any,
+    standingsSize: number,
+    isCupCompetition: boolean,
+    cupRound?: string
+  ): TeamContextSignals {
+    const finished = recentFixtures.filter((item) => this.isFinishedFixture(item)).slice(0, 10);
+    const matchDate = new Date(matchDateIso);
+
+    const rests = finished
+      .slice(0, 3)
+      .map((item) => new Date(String(item?.fixture?.date ?? "")))
+      .filter((d) => !Number.isNaN(d.getTime()))
+      .map((d) => Math.max(0, (matchDate.getTime() - d.getTime()) / (1000 * 60 * 60 * 24)));
+    const avgRestDays = rests.length === 0 ? 5 : rests.reduce((a, b) => a + b, 0) / rests.length;
+    const fatigueIndex = Math.max(0, Math.min(1, (4 - avgRestDays) / 4));
+
+    let concededSum = 0;
+    let cleanSheets = 0;
+    for (const item of finished) {
+      const homeId = Number(item?.teams?.home?.id ?? 0);
+      const homeGoals = Number(item?.goals?.home ?? 0);
+      const awayGoals = Number(item?.goals?.away ?? 0);
+      const conceded = homeId === teamId ? awayGoals : homeGoals;
+      concededSum += conceded;
+      if (conceded === 0) cleanSheets += 1;
+    }
+    const concededLastFiveAvg = finished.length === 0 ? 0 : concededSum / finished.length;
+
+    let motivationIndex = isCupCompetition ? 0.8 : 0.5;
+    let motivationReason = isCupCompetition
+      ? "Mecz pucharowy - wysoka stawka awansu/eliminacji."
+      : "Mecz ligowy o standardowej wadze.";
+
+    if (isCupCompetition) {
+      const normalizedRound = String(cupRound ?? "").toLowerCase();
+      const isKnockoutRound =
+        normalizedRound.includes("semi") ||
+        normalizedRound.includes("final") ||
+        normalizedRound.includes("quarter") ||
+        normalizedRound.includes("round of 16") ||
+        normalizedRound.includes("1/8") ||
+        normalizedRound.includes("1/4") ||
+        normalizedRound.includes("play-off") ||
+        normalizedRound.includes("playoff");
+      const isLeagueStyleRound =
+        normalizedRound.includes("league stage") ||
+        normalizedRound.includes("group") ||
+        normalizedRound.includes("regular season");
+
+      if (isKnockoutRound && normalizedRound.includes("semi")) {
+        motivationIndex = Math.max(motivationIndex, 0.95);
+        motivationReason = "Polfinal pucharu - bezposrednia walka o final.";
+      } else if (isKnockoutRound && normalizedRound.includes("final")) {
+        motivationIndex = Math.max(motivationIndex, 0.98);
+        motivationReason = "Final pucharu - najwyzsza mozliwa stawka meczu.";
+      } else if (
+        isKnockoutRound &&
+        (normalizedRound.includes("quarter") || normalizedRound.includes("1/4"))
+      ) {
+        motivationIndex = Math.max(motivationIndex, 0.9);
+        motivationReason = "Cwiercfinal pucharu - stawka awansu do top4.";
+      } else if (
+        isKnockoutRound &&
+        (normalizedRound.includes("round of 16") ||
+          normalizedRound.includes("1/8") ||
+          normalizedRound.includes("play-off") ||
+          normalizedRound.includes("playoff"))
+      ) {
+        motivationIndex = Math.max(motivationIndex, 0.85);
+        motivationReason = "Faza pucharowa - mecz o awans do kolejnej rundy.";
+      } else if (isLeagueStyleRound) {
+        motivationIndex = Math.max(motivationIndex, 0.62);
+        motivationReason =
+          "Etap ligowy europejskich rozgrywek - wynik ma znaczenie tabelowe, ale to nie jest mecz eliminacyjny.";
+      } else if (!isKnockoutRound) {
+        motivationIndex = Math.max(motivationIndex, 0.7);
+        motivationReason =
+          "Rozgrywki pucharowe, ale bez jednoznacznej fazy eliminacyjnej w danych - przyjeto podwyzszona stawke.";
+      }
+    } else {
+      const rank = Number(standingsRow?.rank);
+      if (Number.isFinite(rank) && standingsSize > 0) {
+        if (rank <= 4) {
+          motivationIndex = Math.max(motivationIndex, 0.85);
+          motivationReason = "Druzyna jest w strefie walki o najwyzsze cele (top tabeli).";
+        }
+        if (rank >= Math.max(standingsSize - 2, 1)) {
+          motivationIndex = Math.max(motivationIndex, 0.82);
+          motivationReason = "Druzyna jest blisko strefy spadkowej i musi punktowac.";
+        }
+        if (rank > 4 && rank < standingsSize - 2) {
+          motivationIndex = Math.max(motivationIndex, 0.55);
+          motivationReason = "Pozycja w tabeli sugeruje umiarkowana presje na wynik.";
+        }
+      }
+    }
+    motivationIndex = Math.max(0, Math.min(1, motivationIndex));
+
+    return {
+      avgRestDays,
+      fatigueIndex,
+      absencesCount: injuries.length,
+      absences: injuries,
+      motivationIndex,
+      motivationReason,
+      concededLastFiveAvg,
+      cleanSheetsLastFive: cleanSheets
+    };
+  }
+
+  async loadMatchesByDate(date: string): Promise<MatchCard[]> {
+    if (!this.isValidDateString(date)) {
+      throw new Error("Invalid date format. Use YYYY-MM-DD.");
+    }
+
+    const cacheKey = `matches:${date}`;
+    const cached = appCache.get<MatchCard[]>(cacheKey);
+    if (cached) return cached;
+
+    const fixturesResponse = await this.apiClient.getFixturesByDate(date);
+    const payload = fixturesResponse.data?.response ?? [];
+    const cards: MatchCard[] = payload
+      .filter((item: any) => {
+        const leagueId = Number(item?.league?.id);
+        const leagueName = String(item?.league?.name ?? "").toLowerCase();
+        const countryName = String(item?.league?.country ?? "");
+        return (
+          TOP_EUROPEAN_LEAGUE_IDS.has(leagueId) ||
+          isAllowedPolishLeague(leagueName, countryName) ||
+          EXTRA_LEAGUE_NAME_HINTS.some((hint) => leagueName.includes(hint))
+        );
+      })
+      .map((item: any) => {
+        const normalized = normalizeMatchInfo(item);
+        return {
+          fixtureId: normalized.fixtureId,
+          league: normalized.league,
+          date: normalized.date,
+          homeTeam: normalized.homeTeam.name,
+          awayTeam: normalized.awayTeam.name
+        };
+      });
+
+    appCache.set(cacheKey, cards);
+    return cards;
+  }
+
+  async loadTodayMatches(): Promise<MatchCard[]> {
+    return this.loadMatchesByDate(this.formatDateOffset(0));
+  }
+
+  async loadTomorrowMatches(): Promise<MatchCard[]> {
+    return this.loadMatchesByDate(this.formatDateOffset(1));
+  }
+
+  async findFixtureByTeams(homeQuery: string, awayQuery: string, date = this.formatDateOffset(0)): Promise<number | undefined> {
+    const todayMatches = await this.loadMatchesByDate(date);
+    const normalizedHome = homeQuery.trim().toLowerCase();
+    const normalizedAway = awayQuery.trim().toLowerCase();
+
+    const exact = todayMatches.find(
+      (item) =>
+        item.homeTeam.toLowerCase().includes(normalizedHome) &&
+        item.awayTeam.toLowerCase().includes(normalizedAway)
+    );
+    if (exact) return exact.fixtureId;
+
+    const swapped = todayMatches.find(
+      (item) =>
+        item.homeTeam.toLowerCase().includes(normalizedAway) &&
+        item.awayTeam.toLowerCase().includes(normalizedHome)
+    );
+    return swapped?.fixtureId;
+  }
+
+  async loadDataset(fixtureId: number): Promise<MatchDataset> {
+    const cacheKey = `dataset:${fixtureId}`;
+    const cached = appCache.get<MatchDataset>(cacheKey);
+    if (cached) return cached;
+
+    const fixtureResponse = await this.apiClient.getFixtureById(fixtureId);
+    const fixturePayload = fixtureResponse.data?.response?.[0];
+    if (!fixturePayload) {
+      throw new Error(`Fixture ${fixtureId} not found`);
+    }
+
+    const match = normalizeMatchInfo(fixturePayload);
+    const leagueId = Number(fixturePayload?.league?.id);
+    const season = Number(fixturePayload?.league?.season);
+    const fixtureDate = String(fixturePayload?.fixture?.date ?? "").slice(0, 10);
+    const isCupCompetition = String(fixturePayload?.league?.type ?? "").toLowerCase() === "cup";
+    const cupRound = String(fixturePayload?.league?.round ?? "");
+    const canUseTeamStats = Number.isFinite(leagueId) && Number.isFinite(season);
+    const safeTeamStats = (teamId: number): Promise<any> => {
+      if (!canUseTeamStats) return Promise.resolve({ data: { response: undefined } });
+      return this.apiClient
+        .getTeamStatistics(leagueId, teamId, season, fixtureDate)
+        .catch((error) => {
+          logger.warn({ teamId, leagueId, season, error }, "Team statistics unavailable, using fixtures fallback");
+          return { data: { response: undefined } };
+        });
+    };
+
+    const [homeFormRes, awayFormRes, homeStatsRes, awayStatsRes, h2hRes, oddsRes] = await Promise.all([
+      this.apiClient.getTeamForm(match.homeTeam.id),
+      this.apiClient.getTeamForm(match.awayTeam.id),
+      safeTeamStats(match.homeTeam.id),
+      safeTeamStats(match.awayTeam.id),
+      this.apiClient.getHeadToHead(match.homeTeam.id, match.awayTeam.id),
+      this.apiClient.getOddsByFixture(match.fixtureId)
+    ]);
+
+    const [injuriesHomeRes, injuriesAwayRes, standingsRes] = await Promise.all([
+      canUseTeamStats
+        ? this.apiClient.getInjuries(match.homeTeam.id, leagueId, season).catch(() => ({ data: { response: [] } }))
+        : Promise.resolve({ data: { response: [] } }),
+      canUseTeamStats
+        ? this.apiClient.getInjuries(match.awayTeam.id, leagueId, season).catch(() => ({ data: { response: [] } }))
+        : Promise.resolve({ data: { response: [] } }),
+      canUseTeamStats
+        ? this.apiClient.getStandings(leagueId, season).catch(() => ({ data: { response: [] } }))
+        : Promise.resolve({ data: { response: [] } })
+    ]);
+
+    const homeFixtures = homeFormRes.data?.response ?? [];
+    const awayFixtures = awayFormRes.data?.response ?? [];
+    const h2hFixtures = h2hRes.data?.response ?? [];
+    const oddsPayload = oddsRes.data?.response?.[0];
+
+    const homeStatsPayload = homeStatsRes.data?.response;
+    const awayStatsPayload = awayStatsRes.data?.response;
+
+    const homeFormFromStats = normalizeTeamFormFromStatistics(match.homeTeam.id, homeStatsPayload);
+    const awayFormFromStats = normalizeTeamFormFromStatistics(match.awayTeam.id, awayStatsPayload);
+    const homeFormFallback = normalizeTeamForm(match.homeTeam.id, homeFixtures);
+    const awayFormFallback = normalizeTeamForm(match.awayTeam.id, awayFixtures);
+
+    const homeForm = homeFormFromStats.lastFive.length > 0 ? homeFormFromStats : homeFormFallback;
+    const awayForm = awayFormFromStats.lastFive.length > 0 ? awayFormFromStats : awayFormFallback;
+
+    const relevantFixtureIds = Array.from(
+      new Set(
+        [...homeFixtures, ...awayFixtures]
+          .filter((item: any) => this.isFinishedFixture(item))
+          .slice(0, 20)
+          .map((item: any) => Number(item?.fixture?.id))
+          .filter((id) => Number.isFinite(id))
+      )
+    );
+    const statsEntries = await Promise.all(
+      relevantFixtureIds.map(async (id) => {
+        try {
+          const response = await this.apiClient.getFixtureStatistics(id);
+          return [id, response.data?.response ?? []] as const;
+        } catch (error) {
+          logger.warn({ id, error }, "Fixture statistics unavailable");
+          return [id, []] as const;
+        }
+      })
+    );
+    const fixtureStatsById = new Map<number, any[]>(statsEntries);
+
+    const homeAdvancedStats = this.computeAdvancedStats(match.homeTeam.id, homeFixtures, fixtureStatsById);
+    const awayAdvancedStats = this.computeAdvancedStats(match.awayTeam.id, awayFixtures, fixtureStatsById);
+
+    const standingsTable =
+      standingsRes.data?.response?.[0]?.league?.standings?.[0] ??
+      standingsRes.data?.response?.[0]?.league?.standings?.flat?.()[0] ??
+      [];
+    const standingsRows = Array.isArray(standingsTable) ? standingsTable : [];
+    const homeStanding = standingsRows.find((row: any) => Number(row?.team?.id) === match.homeTeam.id);
+    const awayStanding = standingsRows.find((row: any) => Number(row?.team?.id) === match.awayTeam.id);
+
+    const homeContext = this.computeContextSignals(
+      match.homeTeam.id,
+      homeFixtures,
+      fixturePayload?.fixture?.date ?? new Date().toISOString(),
+      Array.isArray(injuriesHomeRes.data?.response)
+        ? injuriesHomeRes.data.response
+            .map((row: any) => String(row?.player?.name ?? "").trim())
+            .filter((name: string) => name.length > 0)
+        : [],
+      homeStanding,
+      standingsRows.length,
+      isCupCompetition,
+      cupRound
+    );
+    const awayContext = this.computeContextSignals(
+      match.awayTeam.id,
+      awayFixtures,
+      fixturePayload?.fixture?.date ?? new Date().toISOString(),
+      Array.isArray(injuriesAwayRes.data?.response)
+        ? injuriesAwayRes.data.response
+            .map((row: any) => String(row?.player?.name ?? "").trim())
+            .filter((name: string) => name.length > 0)
+        : [],
+      awayStanding,
+      standingsRows.length,
+      isCupCompetition,
+      cupRound
+    );
+
+    const dataset: MatchDataset = {
+      match,
+      homeForm,
+      awayForm,
+      h2h: normalizeH2H(h2hFixtures, match.homeTeam.id, match.awayTeam.id),
+      homeAdvancedStats,
+      awayAdvancedStats,
+      homeContext,
+      awayContext,
+      homeRecentMatches: summarizeRecentMatches(match.homeTeam.id, homeFixtures, 10),
+      awayRecentMatches: summarizeRecentMatches(match.awayTeam.id, awayFixtures, 10),
+      h2hRecentMatches: summarizeH2HMatches(h2hFixtures, match.homeTeam.id, match.awayTeam.id, 5),
+      odds: normalizeOdds(oddsPayload)
+    };
+
+    appCache.set(cacheKey, dataset);
+    return dataset;
+  }
+}
