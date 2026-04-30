@@ -87,6 +87,12 @@ export const registerHandlers = (
   matchRepository: MatchRepository,
   analysisEngine: AnalysisEngine
 ): void => {
+  const showMainMenu = async (ctx: any): Promise<void> => {
+    // Clear old reply keyboard (slash commands) and always show inline menu only.
+    await ctx.reply(" ", { reply_markup: { remove_keyboard: true } });
+    await ctx.reply("Menu glowne:", { reply_markup: startKeyboard });
+  };
+
   const buildBackToDayMenuKeyboard = (dateInput: string): { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } => ({
     inline_keyboard: [
       [{ text: "⬅️ Wroc do menu dnia", callback_data: `daypick:${dateInput}` }],
@@ -241,11 +247,10 @@ export const registerHandlers = (
   } as const;
 
   bot.start((ctx: any) => {
-    const startMessage = "Menu glowne:";
-    return ctx.reply(startMessage, { reply_markup: startKeyboard });
+    return showMainMenu(ctx);
   });
 
-  bot.help((ctx: any) => ctx.reply(usage));
+  bot.help((ctx: any) => ctx.reply(usage, { reply_markup: buildBackToMainMenuKeyboard() }));
 
   bot.command("today", async (ctx: any) => {
     try {
@@ -321,7 +326,7 @@ export const registerHandlers = (
     const parsed = parseAnalyzeInput(query);
 
     if (!query) {
-      await ctx.reply(usage);
+      await ctx.reply(usage, { reply_markup: buildBackToMainMenuKeyboard() });
       return;
     }
 
@@ -341,7 +346,8 @@ export const registerHandlers = (
 
       if (!fixtureId) {
         await ctx.reply(
-          "Nie znalazlem meczu po tej frazie. Uzyj /today albo podaj konkretne fixtureId."
+          "Nie znalazlem meczu po tej frazie. Uzyj /today albo podaj konkretne fixtureId.",
+          { reply_markup: buildBackToMainMenuKeyboard() }
         );
         return;
       }
@@ -352,7 +358,9 @@ export const registerHandlers = (
       await ctx.reply("Wrocic do menu?", { reply_markup: buildBackToMainMenuKeyboard() });
     } catch (error) {
       logger.error({ error, query }, "Failed to analyze fixture");
-      await ctx.reply("Nie udalo sie pobrac danych dla tego meczu. Sprobuj ponownie lub uzyj /today.");
+      await ctx.reply("Nie udalo sie pobrac danych dla tego meczu. Sprobuj ponownie lub uzyj /today.", {
+        reply_markup: buildBackToMainMenuKeyboard()
+      });
     }
   });
 
@@ -486,11 +494,11 @@ export const registerHandlers = (
 
   bot.action("start:help", async (ctx: any) => {
     await ctx.answerCbQuery();
-    await ctx.reply(usage);
+    await ctx.reply(usage, { reply_markup: buildBackToMainMenuKeyboard() });
   });
 
   bot.action("startmenu", async (ctx: any) => {
     await ctx.answerCbQuery();
-    await ctx.reply("Menu glowne:", { reply_markup: startKeyboard });
+    await showMainMenu(ctx);
   });
 };
