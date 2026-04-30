@@ -54,9 +54,10 @@ const formatProbabilities = (result: AnalysisResult): string =>
 const formatOddsTrendSection = (result: AnalysisResult): string | undefined => {
   if (!result.odds || !result.oddsTrend) return undefined;
   const trend = result.oddsTrend;
+  const windowLabel = `${trend.windowHours}h`;
   const fmt = (current?: number, previous?: number, delta?: number): string => {
     if (typeof current !== "number") return "brak danych";
-    if (typeof previous !== "number" || typeof delta !== "number") return `${current.toFixed(2)} (brak historii 24h)`;
+    if (typeof previous !== "number" || typeof delta !== "number") return `${current.toFixed(2)} (brak historii ${windowLabel})`;
     if (Math.abs(delta) < 0.01) {
       return `${previous.toFixed(2)} -> ${current.toFixed(2)} (➡️ bez zmiany)`;
     }
@@ -65,16 +66,16 @@ const formatOddsTrendSection = (result: AnalysisResult): string | undefined => {
   };
   const reference = trend.referenceAt ? trend.referenceAt.slice(0, 16).replace("T", " ") : "brak danych";
   return [
-    sectionHeader("💹", "Rynek bukmacherski (trend 24h)"),
+    sectionHeader("💹", `Rynek bukmacherski (trend ${windowLabel})`),
     `- Liczba bookmakerow uwzglednionych: ${trend.bookmakersCount}`,
     `- Kurs 1X2 teraz: 1=${result.odds.home.toFixed(2)} | X=${result.odds.draw.toFixed(2)} | 2=${result.odds.away.toFixed(2)}`,
-    `- HOME (24h): ${fmt(result.odds.home, trend.homeReference, trend.homeDelta)}`,
-    `- DRAW (24h): ${fmt(result.odds.draw, trend.drawReference, trend.drawDelta)}`,
-    `- AWAY (24h): ${fmt(result.odds.away, trend.awayReference, trend.awayDelta)}`,
-    `- BTTS YES (24h): ${fmt(result.odds.bttsYes, trend.bttsYesReference, trend.bttsYesDelta)}`,
-    `- BTTS NO (24h): ${fmt(result.odds.bttsNo, trend.bttsNoReference, trend.bttsNoDelta)}`,
-    `- OVER 2.5 (24h): ${fmt(result.odds.over25, trend.over25Reference, trend.over25Delta)}`,
-    `- UNDER 2.5 (24h): ${fmt(result.odds.under25, trend.under25Reference, trend.under25Delta)}`,
+    `- HOME (${windowLabel}): ${fmt(result.odds.home, trend.homeReference, trend.homeDelta)}`,
+    `- DRAW (${windowLabel}): ${fmt(result.odds.draw, trend.drawReference, trend.drawDelta)}`,
+    `- AWAY (${windowLabel}): ${fmt(result.odds.away, trend.awayReference, trend.awayDelta)}`,
+    `- BTTS YES (${windowLabel}): ${fmt(result.odds.bttsYes, trend.bttsYesReference, trend.bttsYesDelta)}`,
+    `- BTTS NO (${windowLabel}): ${fmt(result.odds.bttsNo, trend.bttsNoReference, trend.bttsNoDelta)}`,
+    `- OVER 2.5 (${windowLabel}): ${fmt(result.odds.over25, trend.over25Reference, trend.over25Delta)}`,
+    `- UNDER 2.5 (${windowLabel}): ${fmt(result.odds.under25, trend.under25Reference, trend.under25Delta)}`,
     `- Punkt startowy trendu: ${reference}`,
     `- Sentyment rynku: ${esc(trend.sentimentSummary)}`,
     `- Najmocniejszy ruch: ${esc(trend.strongestMove ?? "brak istotnej zmiany kursow")}`

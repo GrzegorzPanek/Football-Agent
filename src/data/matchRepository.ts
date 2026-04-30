@@ -47,7 +47,8 @@ const isAllowedPolishLeague = (leagueNameRaw: string, countryRaw: string): boole
 
 export class MatchRepository {
   constructor(private readonly apiClient: FootballApiClient) {}
-  private readonly oddsHistoryTtlSeconds = 60 * 60 * 24;
+  private readonly oddsTrendWindowHours = 72;
+  private readonly oddsHistoryTtlSeconds = 60 * 60 * (this.oddsTrendWindowHours + 24);
 
   private updateOddsHistory(fixtureId: number, odds?: OddsSnapshot): Array<{ timestamp: number; odds: OddsSnapshot }> {
     if (!odds) return [];
@@ -68,7 +69,7 @@ export class MatchRepository {
   ): OddsTrendInfo | undefined {
     if (!odds) return undefined;
     const now = Date.now();
-    const cutoff = now - 24 * 60 * 60 * 1000;
+    const cutoff = now - this.oddsTrendWindowHours * 60 * 60 * 1000;
     const inWindow = history.filter((item) => item.timestamp >= cutoff);
     const reference = inWindow.length > 0 ? inWindow[0] : undefined;
     const delta = (current: number, prev?: number): number | undefined =>
@@ -122,7 +123,7 @@ export class MatchRepository {
 
     return {
       referenceAt: reference ? new Date(reference.timestamp).toISOString() : undefined,
-      windowHours: 24,
+      windowHours: this.oddsTrendWindowHours,
       bookmakersCount,
       homeReference: reference?.odds.home,
       drawReference: reference?.odds.draw,
