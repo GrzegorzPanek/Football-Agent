@@ -57,6 +57,21 @@ const formatGroupedMatches = (title: string, matches: Array<{ homeTeam: string; 
   return sections.join("\n");
 };
 
+const datePlusDays = (days: number): string => {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+
+const buildDayPickerKeyboard = (): any => {
+  const rows: Array<Array<{ text: string; callback_data: string }>> = [];
+  rows.push([{ text: "Dzisiaj (lista meczow)", callback_data: `daypick:${datePlusDays(0)}` }]);
+  for (let i = 1; i <= 10; i += 1) {
+    rows.push([{ text: datePlusDays(i), callback_data: `daypick:${datePlusDays(i)}` }]);
+  }
+  return { inline_keyboard: rows };
+};
+
 const parseAnalyzeInput = (input: string): { fixtureId?: number; home?: string; away?: string } => {
   const trimmed = input.trim();
   const asNumber = Number(trimmed);
@@ -80,6 +95,69 @@ export const registerHandlers = (
   matchRepository: MatchRepository,
   analysisEngine: AnalysisEngine
 ): void => {
+  const sendDateMatchesMenu = async (ctx: any, dateInput: string): Promise<void> => {
+    const matches = await matchRepository.loadMatchesByDate(dateInput);
+    if (matches.length === 0) {
+      await ctx.reply(`Brak meczow na ${dateInput} w top europejskich ligach.`);
+      return;
+    }
+
+    await ctx.reply(
+      formatGroupedMatches(`Mecze na ${dateInput} (top europejskie ligi):`, matches.slice(0, 120)),
+      { parse_mode: "HTML" }
+    );
+
+    const buttons: Array<Array<{ text: string; callback_data: string }>> = [
+      [{ text: `Analizuj wszystkie (${dateInput})`, callback_data: `dayall:${dateInput}` }]
+    ];
+
+    for (const item of matches.slice(0, 60)) {
+      const label = `${item.homeTeam} vs ${item.awayTeam}`.slice(0, 58);
+      buttons.push([{ text: label, callback_data: `fixture:${item.fixtureId}` }]);
+    }
+
+    await ctx.reply("Wybierz mecz do analizy lub analizuj wszystkie:", {
+      reply_markup: { inline_keyboard: buttons }
+    });
+  };
+
+  const runFullDateAnalysis = async (ctx: any, selectedDate: string): Promise<void> => {
+    await ctx.reply(`Analizuje mecze na ${selectedDate}, chwila...`);
+    const matches = await matchRepository.loadMatchesByDate(selectedDate);
+    if (matches.length === 0) {
+      await ctx.reply(`Brak meczow na ${selectedDate} w top europejskich ligach.`);
+      return;
+    }
+    let sentCount = 0;
+    for (const item of matches) {
+      try {
+        const dataset = await matchRepository.loadDataset(item.fixtureId);
+        const result = analysisEngine.analyze(dataset);
+        await ctx.reply(formatAnalysisMessage(result), { parse_mode: "HTML" });
+        sentCount += 1;
+      } catch (error) {
+        logger.warn({ error, fixtureId: item.fixtureId }, "Failed single match in date analysis");
+      }
+    }
+    if (sentCount === 0) {
+      await ctx.reply("Nie udalo sie przygotowac analiz dla tej daty.");
+      return;
+    }
+    await ctx.reply(`Zakonczono analize ${sentCount} meczow na ${selectedDate}.`);
+  };
+
+  const startKeyboard = {
+    keyboard: [
+      ["/today", "/tomorrow"],
+      ["/day 2026-05-03"],
+      ["/analyze today", "/analyze tomorrow"],
+      ["/analyzeleague 2026-05-03 | Premier League"],
+      ["/help"]
+    ],
+    resize_keyboard: true,
+    one_time_keyboard: false
+  } as const;
+
   bot.start((ctx: any) => {
     const startMessage = [
       "Czesc! Jestem agentem do analizy meczow pilkarskich.",
@@ -96,23 +174,14 @@ export const registerHandlers = (
       "/analyze TeamA vs TeamB - wyszukanie meczu po nazwach druzyn",
       "/help - skrot uzycia"
     ].join("\n");
-    return ctx.reply(startMessage);
+    return ctx.reply(startMessage, { reply_markup: startKeyboard });
   });
 
   bot.help((ctx: any) => ctx.reply(usage));
 
   bot.command("today", async (ctx: any) => {
     try {
-      const matches = await matchRepository.loadTodayMatches();
-      if (matches.length === 0) {
-        await ctx.reply("Brak meczow na dzis w top europejskich ligach.");
-        return;
-      }
-
-      await ctx.reply(
-        formatGroupedMatches("Dzisiejsze mecze (top europejskie ligi):", matches.slice(0, 60)),
-        { parse_mode: "HTML" }
-      );
+      await sendDateMatchesMenu(ctx, datePlusDays(0));
     } catch (error) {
       logger.error({ error }, "Failed to load today matches");
       await ctx.reply("Nie udalo sie pobrac listy meczow na dzis.");
@@ -121,15 +190,7 @@ export const registerHandlers = (
 
   bot.command("tomorrow", async (ctx: any) => {
     try {
-      const matches = await matchRepository.loadTomorrowMatches();
-      if (matches.length === 0) {
-        await ctx.reply("Brak meczow na jutro w top europejskich ligach.");
-        return;
-      }
-      await ctx.reply(
-        formatGroupedMatches("Jutrzejsze mecze (top europejskie ligi):", matches.slice(0, 80)),
-        { parse_mode: "HTML" }
-      );
+      await sendDateMatchesMenu(ctx, datePlusDays(1));
     } catch (error) {
       logger.error({ error }, "Failed to load tomorrow matches");
       await ctx.reply("Nie udalo sie pobrac listy meczow na jutro.");
@@ -139,20 +200,16 @@ export const registerHandlers = (
   bot.command("day", async (ctx: any) => {
     const messageText = "text" in ctx.message ? ctx.message.text : "";
     const dateInput = messageText.replace(/^\/day(@\w+)?\s*/i, "").trim();
+    if (!dateInput) {
+      await ctx.reply("Wybierz dzien:", { reply_markup: buildDayPickerKeyboard() });
+      return;
+    }
     if (!datePattern.test(dateInput)) {
-      await ctx.reply("Uzyj formatu: /day YYYY-MM-DD");
+      await ctx.reply("Uzyj formatu: /day YYYY-MM-DD lub samo /day");
       return;
     }
     try {
-      const matches = await matchRepository.loadMatchesByDate(dateInput);
-      if (matches.length === 0) {
-        await ctx.reply(`Brak meczow na ${dateInput} w top europejskich ligach.`);
-        return;
-      }
-      await ctx.reply(
-        formatGroupedMatches(`Mecze na ${dateInput} (top europejskie ligi):`, matches.slice(0, 120)),
-        { parse_mode: "HTML" }
-      );
+      await sendDateMatchesMenu(ctx, dateInput);
     } catch (error) {
       logger.error({ error, dateInput }, "Failed to load matches by date");
       await ctx.reply("Nie udalo sie pobrac listy meczow dla tej daty.");
@@ -215,31 +272,7 @@ export const registerHandlers = (
     try {
       const selectedDate = resolveDateKeyword(query);
       if (selectedDate) {
-        await ctx.reply(`Analizuje mecze na ${selectedDate}, chwila...`);
-        const matches = await matchRepository.loadMatchesByDate(selectedDate);
-        if (matches.length === 0) {
-          await ctx.reply(`Brak meczow na ${selectedDate} w top europejskich ligach.`);
-          return;
-        }
-
-        let sentCount = 0;
-        for (const item of matches) {
-          try {
-            const dataset = await matchRepository.loadDataset(item.fixtureId);
-            const result = analysisEngine.analyze(dataset);
-            await ctx.reply(formatAnalysisMessage(result), { parse_mode: "HTML" });
-            sentCount += 1;
-          } catch (error) {
-            logger.warn({ error, fixtureId: item.fixtureId }, "Failed single match in /analyze today");
-          }
-        }
-
-        if (sentCount === 0) {
-          await ctx.reply("Nie udalo sie przygotowac analiz dzisiejszych meczow.");
-          return;
-        }
-
-        await ctx.reply(`Zakonczono analize ${sentCount} meczow na ${selectedDate}.`);
+        await runFullDateAnalysis(ctx, selectedDate);
         return;
       }
 
@@ -263,6 +296,42 @@ export const registerHandlers = (
     } catch (error) {
       logger.error({ error, query }, "Failed to analyze fixture");
       await ctx.reply("Nie udalo sie pobrac danych dla tego meczu. Sprobuj ponownie lub uzyj /today.");
+    }
+  });
+
+  bot.action(/^daypick:(\d{4}-\d{2}-\d{2})$/, async (ctx: any) => {
+    const dateInput = ctx.match?.[1];
+    await ctx.answerCbQuery();
+    try {
+      await sendDateMatchesMenu(ctx, dateInput);
+    } catch (error) {
+      logger.error({ error, dateInput }, "Failed daypick callback");
+      await ctx.reply("Nie udalo sie pobrac meczow dla wybranego dnia.");
+    }
+  });
+
+  bot.action(/^dayall:(\d{4}-\d{2}-\d{2})$/, async (ctx: any) => {
+    const dateInput = ctx.match?.[1];
+    await ctx.answerCbQuery();
+    try {
+      await runFullDateAnalysis(ctx, dateInput);
+    } catch (error) {
+      logger.error({ error, dateInput }, "Failed dayall callback");
+      await ctx.reply("Nie udalo sie uruchomic analizy dla wybranego dnia.");
+    }
+  });
+
+  bot.action(/^fixture:(\d+)$/, async (ctx: any) => {
+    const fixtureId = Number(ctx.match?.[1]);
+    await ctx.answerCbQuery();
+    try {
+      await ctx.reply("Analizuje wybrany mecz, chwila...");
+      const dataset = await matchRepository.loadDataset(fixtureId);
+      const result = analysisEngine.analyze(dataset);
+      await ctx.reply(formatAnalysisMessage(result), { parse_mode: "HTML" });
+    } catch (error) {
+      logger.error({ error, fixtureId }, "Failed fixture callback");
+      await ctx.reply("Nie udalo sie pobrac analizy dla wybranego meczu.");
     }
   });
 };

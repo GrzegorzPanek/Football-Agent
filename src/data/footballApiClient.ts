@@ -24,8 +24,8 @@ export class FootballApiClient {
       this.http.get("/fixtures", {
         params: {
           team: teamId,
-          // Wider sample prevents empty form for upcoming fixtures.
-          last: 20,
+          // Wider sample improves H2H fallback discovery.
+          last: 50,
           ...(league ? { league } : {})
         }
       })
