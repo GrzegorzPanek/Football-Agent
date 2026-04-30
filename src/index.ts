@@ -20,6 +20,31 @@ const bootstrap = async (): Promise<void> => {
 
   await bot.launch();
   logger.info("Telegram football analysis bot started");
+
+  let oddsTrackerRunning = false;
+  const runOddsTracker = async (trigger: "startup" | "interval"): Promise<void> => {
+    if (oddsTrackerRunning) {
+      logger.warn({ trigger }, "Odds tracker skipped because previous run is still active");
+      return;
+    }
+    oddsTrackerRunning = true;
+    try {
+      const stats = await repository.refreshOddsHistoryForTodayAndTomorrow(config.ODDS_TRACKER_FIXTURES_LIMIT);
+      logger.info(
+        { trigger, checkedFixtures: stats.checked, updatedOdds: stats.updated },
+        "Background odds tracker cycle finished"
+      );
+    } catch (error) {
+      logger.error({ error, trigger }, "Background odds tracker cycle failed");
+    } finally {
+      oddsTrackerRunning = false;
+    }
+  };
+
+  void runOddsTracker("startup");
+  setInterval(() => {
+    void runOddsTracker("interval");
+  }, Math.max(1, config.ODDS_TRACKER_INTERVAL_MINUTES) * 60 * 1000);
 };
 
 bootstrap().catch((error) => {

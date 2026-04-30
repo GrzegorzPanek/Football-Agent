@@ -13,5 +13,7 @@ export const config = {
   FOOTBALL_API_KEY: process.env.FOOTBALL_API_KEY ?? "",
   BOOKMAKER_MARGIN: parseNumber(process.env.BOOKMAKER_MARGIN, 0.05),
   CACHE_TTL_SECONDS: parseNumber(process.env.CACHE_TTL_SECONDS, 600),
+  ODDS_TRACKER_INTERVAL_MINUTES: parseNumber(process.env.ODDS_TRACKER_INTERVAL_MINUTES, 15),
+  ODDS_TRACKER_FIXTURES_LIMIT: parseNumber(process.env.ODDS_TRACKER_FIXTURES_LIMIT, 120),
   LOG_LEVEL: process.env.LOG_LEVEL ?? "info"
 };

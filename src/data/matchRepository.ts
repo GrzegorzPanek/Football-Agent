@@ -228,6 +228,38 @@ export class MatchRepository {
     return date.toISOString().slice(0, 10);
   }
 
+  async refreshOddsHistoryForDate(date: string, fixturesLimit = 120): Promise<{ checked: number; updated: number }> {
+    const matches = await this.loadMatchesByDate(date);
+    const target = matches.slice(0, Math.max(0, fixturesLimit));
+    let updated = 0;
+
+    for (const match of target) {
+      try {
+        const oddsRes = await this.apiClient.getOddsByFixture(match.fixtureId);
+        const oddsPayload = oddsRes.data?.response?.[0];
+        const odds = normalizeOdds(oddsPayload);
+        if (!odds) continue;
+        this.updateOddsHistory(match.fixtureId, odds);
+        updated += 1;
+      } catch (error) {
+        logger.warn({ error, fixtureId: match.fixtureId }, "Failed odds refresh for fixture");
+      }
+    }
+
+    return { checked: target.length, updated };
+  }
+
+  async refreshOddsHistoryForTodayAndTomorrow(fixturesLimit = 120): Promise<{ checked: number; updated: number }> {
+    const today = this.formatDateOffset(0);
+    const tomorrow = this.formatDateOffset(1);
+    const todayStats = await this.refreshOddsHistoryForDate(today, fixturesLimit);
+    const tomorrowStats = await this.refreshOddsHistoryForDate(tomorrow, fixturesLimit);
+    return {
+      checked: todayStats.checked + tomorrowStats.checked,
+      updated: todayStats.updated + tomorrowStats.updated
+    };
+  }
+
   private isValidDateString(value: string): boolean {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
     const parsed = new Date(value);
