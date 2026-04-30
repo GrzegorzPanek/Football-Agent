@@ -13,6 +13,8 @@ const resultBadge = (result?: "W" | "D" | "L"): string => {
   return "";
 };
 
+const sectionHeader = (icon: string, title: string): string => `<b>${icon} ${title}:</b>`;
+
 const describeSignals = (signals: ValueSignal[]): string => {
   if (signals.length === 0) return "Brak mocnego value dla dostepnych rynkow (sekcja informacyjna).";
   return signals
@@ -25,10 +27,10 @@ const describeSignals = (signals: ValueSignal[]): string => {
 
 const formatBestBet = (result: AnalysisResult): string => {
   if (!result.bestBet) {
-    return "Najlepszy typ:\n- Brak";
+    return `${sectionHeader("🎯", "Najlepszy typ")}\n- Brak`;
   }
   return [
-    "<b>Najlepszy typ:</b>",
+    sectionHeader("🎯", "Najlepszy typ"),
     `- Rynek: ${esc(result.bestBet.market)}`,
     `- Pewnosc modelu: ${pct(result.bestBet.confidence)}`,
     `- Uzasadnienie: ${esc(result.bestBet.reason)}`
@@ -37,7 +39,7 @@ const formatBestBet = (result: AnalysisResult): string => {
 
 const formatProbabilities = (result: AnalysisResult): string =>
   [
-    "<b>Prawdopodobienstwa rynkow:</b>",
+    sectionHeader("📊", "Prawdopodobienstwa rynkow"),
     `- 1 (home win): ${pct(result.marketOutlook.homeWin)}`,
     `- X (draw): ${pct(result.marketOutlook.draw)}`,
     `- 2 (away win): ${pct(result.marketOutlook.awayWin)}`,
@@ -56,7 +58,7 @@ const formatOddsTrendSection = (result: AnalysisResult): string | undefined => {
     typeof delta === "number" ? `${delta > 0 ? "⬆️" : delta < 0 ? "⬇️" : "➡️"} ${delta.toFixed(2)}` : "brak danych";
   const reference = trend.referenceAt ? trend.referenceAt.slice(0, 16).replace("T", " ") : "brak danych";
   return [
-    "<b>Rynek bukmacherski (trend 24h):</b>",
+    sectionHeader("💹", "Rynek bukmacherski (trend 24h)"),
     `- Bookmakerzy w probce: ${trend.bookmakersCount}`,
     `- Kurs 1X2 teraz: 1=${result.odds.home.toFixed(2)} | X=${result.odds.draw.toFixed(2)} | 2=${result.odds.away.toFixed(2)}`,
     `- Zmiana 24h HOME: ${fmt(trend.homeDelta)}`,
@@ -107,7 +109,7 @@ const formatLeagueTableSection = (result: AnalysisResult): string | undefined =>
   };
 
   return [
-    "<b>Tabela ligi (top):</b>",
+    sectionHeader("🏁", "Tabela ligi (top)"),
     ...rows.map((row) => {
       const isSelected =
         row.teamId === result.match.homeTeam.id || row.teamId === result.match.awayTeam.id;
@@ -128,7 +130,7 @@ const formatRecentMatchesSection = (
 ): string => {
   if (matches.length === 0) return `<b>${title}</b>\n- Brak danych`;
   return [
-    `<b>${title}</b> (proba: ${matches.length})`,
+    `${sectionHeader("🗓️", title)} (proba: ${matches.length})`,
     ...matches.map((m) =>
       `- 📅 <b>${m.date}</b>\n  ${esc(m.homeTeam)} ${m.score} ${esc(m.awayTeam)}${m.resultForFocus ? ` (${resultBadge(m.resultForFocus)})` : ""}`
     )
@@ -156,7 +158,7 @@ const formatAdvancedStatsSection = (
   }
 ): string =>
   [
-    `<b>Zaawansowane statystyki ${esc(teamName)}:</b>`,
+    sectionHeader("📈", `Zaawansowane statystyki ${esc(teamName)}`),
     `- Team over 0.5 (gole druzyny): ${pct(stats.teamOver05Pct)}`,
     `- Team over 1.5 (gole druzyny): ${pct(stats.teamOver15Pct)}`,
     `- Team over 2.5 (gole druzyny): ${pct(stats.teamOver25Pct)}`,
@@ -176,7 +178,7 @@ const formatH2HAdvancedStats = (
   homeTeamName: string,
   awayTeamName: string
 ): string => {
-  if (matches.length === 0) return "<b>Zaawansowane H2H:</b>\n- Brak danych";
+  if (matches.length === 0) return `${sectionHeader("🤝", "Zaawansowane H2H")}\n- Brak danych`;
 
   const totals = matches
     .map((m) => m.score.split("-").map((value) => Number(value.trim())))
@@ -190,7 +192,7 @@ const formatH2HAdvancedStats = (
     totals.length === 0 ? 0 : totals.reduce((acc, value) => acc + value, 0) / totals.length;
 
   return [
-    `<b>Zaawansowane H2H (${esc(homeTeamName)} vs ${esc(awayTeamName)})</b> (proba: ${matches.length}):`,
+    `${sectionHeader("🤝", `Zaawansowane H2H (${esc(homeTeamName)} vs ${esc(awayTeamName)})`)} (proba: ${matches.length}):`,
     `- Over 0.5: ${over(0.5)}`,
     `- Over 1.5: ${over(1.5)}`,
     `- Over 2.5: ${over(2.5)}`,
@@ -213,7 +215,7 @@ const formatContextSection = (
   }
 ): string =>
   [
-    `<b>Kontekst meczu ${esc(teamName)}:</b>`,
+    sectionHeader("🧭", `Kontekst meczu ${esc(teamName)}`),
     `- Sredni odpoczynek: ${context.avgRestDays.toFixed(1)} dni`,
     `- Zmeczenie: ${pct(context.fatigueIndex)}`,
     `- Absencje kluczowych (injuries): ${context.absencesCount}`,
@@ -226,7 +228,7 @@ const formatContextSection = (
 
 export const formatAnalysisMessage = (result: AnalysisResult): string => {
   const predictionSection = [
-    "<b>Predykcja:</b>",
+    sectionHeader("🔮", "Predykcja"),
     `- Home win: ${pct(result.prediction.homeWinProbability)}`,
     `- Draw: ${pct(result.prediction.drawProbability)}`,
     `- Away win: ${pct(result.prediction.awayWinProbability)}`,
@@ -235,9 +237,9 @@ export const formatAnalysisMessage = (result: AnalysisResult): string => {
     )} - ${result.prediction.expectedAwayGoals.toFixed(2)} ${esc(result.match.awayTeam.name)}`
   ].join("\n");
 
-  const statsSectionFormatted = ["<b>Statystyki:</b>", ...result.statsSummary.map((line) => `- ${line}`)].join("\n");
+  const statsSectionFormatted = [sectionHeader("📌", "Statystyki"), ...result.statsSummary.map((line) => `- ${line}`)].join("\n");
 
-  const valueSection = ["<b>Value signals:</b>", describeSignals(result.valueSignals)].join("\n");
+  const valueSection = [sectionHeader("💰", "Value signals"), describeSignals(result.valueSignals)].join("\n");
   const bestBetSection = formatBestBet(result);
   const homeRecentSection = formatRecentMatchesSection(
     `Ostatnie mecze ${esc(result.match.homeTeam.name)}:`,
@@ -268,8 +270,10 @@ export const formatAnalysisMessage = (result: AnalysisResult): string => {
   const oddsTrendSection = formatOddsTrendSection(result);
 
   return [
-    `<b>Mecz:</b> ${esc(result.match.homeTeam.name)} vs ${esc(result.match.awayTeam.name)}`,
-    `<b>Liga:</b> <b>${esc(result.match.league)}</b>`,
+    "━━━━━━━━━━━━━━",
+    `⚽ <b>Mecz:</b> ${esc(result.match.homeTeam.name)} vs ${esc(result.match.awayTeam.name)}`,
+    `🏆 <b>Liga:</b> <b>${esc(result.match.league)}</b>`,
+    "━━━━━━━━━━━━━━",
     ...(leagueTableSection ? [leagueTableSection] : []),
     predictionSection,
     statsSectionFormatted,
@@ -285,6 +289,7 @@ export const formatAnalysisMessage = (result: AnalysisResult): string => {
     ...(oddsTrendSection ? [oddsTrendSection] : []),
     valueSection,
     bestBetSection,
+    "━━━━━━━━━━━━━━",
     "<i>Disclaimer: analiza ma charakter informacyjny, nie jest poradą finansową.</i>"
   ].join("\n\n");
 };
