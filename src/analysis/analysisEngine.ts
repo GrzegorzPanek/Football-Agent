@@ -29,6 +29,7 @@ export class AnalysisEngine {
       awayAdvancedStats: dataset.awayAdvancedStats,
       homeContext: dataset.homeContext,
       awayContext: dataset.awayContext,
+      leagueTableRows: dataset.leagueTableRows,
       marketOutlook,
       valueSignals,
       homeRecentMatches: dataset.homeRecentMatches,

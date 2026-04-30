@@ -9,7 +9,7 @@ import {
   summarizeH2HMatches,
   summarizeRecentMatches
 } from "./normalizers";
-import { MatchCard, MatchDataset, TeamAdvancedStats, TeamContextSignals } from "../types";
+import { LeagueTableRow, MatchCard, MatchDataset, TeamAdvancedStats, TeamContextSignals } from "../types";
 import { logger } from "../utils/logger";
 
 const TOP_EUROPEAN_LEAGUE_IDS = new Set<number>([
@@ -425,6 +425,20 @@ export class MatchRepository {
     };
   }
 
+  private isKnockoutRound(cupRound?: string): boolean {
+    const normalizedRound = String(cupRound ?? "").toLowerCase();
+    return (
+      normalizedRound.includes("semi") ||
+      normalizedRound.includes("final") ||
+      normalizedRound.includes("quarter") ||
+      normalizedRound.includes("round of 16") ||
+      normalizedRound.includes("1/8") ||
+      normalizedRound.includes("1/4") ||
+      normalizedRound.includes("play-off") ||
+      normalizedRound.includes("playoff")
+    );
+  }
+
   async loadMatchesByDate(date: string): Promise<MatchCard[]> {
     if (!this.isValidDateString(date)) {
       throw new Error("Invalid date format. Use YYYY-MM-DD.");
@@ -605,6 +619,25 @@ export class MatchRepository {
       standingsRes.data?.response?.[0]?.league?.standings?.flat?.()[0] ??
       [];
     const standingsRows = Array.isArray(standingsTable) ? standingsTable : [];
+    const isCupKnockout = isCupCompetition && this.isKnockoutRound(cupRound);
+    const leagueTableRows: LeagueTableRow[] | undefined = !isCupKnockout
+      ? standingsRows
+          .map((row: any) => ({
+            rank: Number(row?.rank),
+            teamId: Number(row?.team?.id),
+            teamName: String(row?.team?.name ?? ""),
+            points: Number(row?.points ?? 0),
+            played: Number(row?.all?.played ?? 0)
+          }))
+          .filter(
+            (row: LeagueTableRow) =>
+              Number.isFinite(row.rank) &&
+              Number.isFinite(row.teamId) &&
+              row.teamName.length > 0
+          )
+          .sort((a: LeagueTableRow, b: LeagueTableRow) => a.rank - b.rank)
+          .slice(0, 12)
+      : undefined;
     const homeStanding = standingsRows.find((row: any) => Number(row?.team?.id) === match.homeTeam.id);
     const awayStanding = standingsRows.find((row: any) => Number(row?.team?.id) === match.awayTeam.id);
 
@@ -650,6 +683,7 @@ export class MatchRepository {
       awayAdvancedStats,
       homeContext,
       awayContext,
+      leagueTableRows,
       homeRecentMatches: summarizeRecentMatches(match.homeTeam.id, homeFixtures, 10),
       awayRecentMatches: summarizeRecentMatches(match.awayTeam.id, awayFixtures, 10),
       h2hRecentMatches: summarizeH2HMatches(h2hFixtures, match.homeTeam.id, match.awayTeam.id, 8),

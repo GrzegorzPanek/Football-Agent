@@ -64,6 +64,14 @@ export interface TeamContextSignals {
   cleanSheetsLastFive: number;
 }
 
+export interface LeagueTableRow {
+  rank: number;
+  teamId: number;
+  teamName: string;
+  points: number;
+  played: number;
+}
+
 export interface HeadToHeadSummary {
   homeWins: number;
   awayWins: number;
@@ -89,6 +97,7 @@ export interface MatchDataset {
   awayAdvancedStats: TeamAdvancedStats;
   homeContext: TeamContextSignals;
   awayContext: TeamContextSignals;
+  leagueTableRows?: LeagueTableRow[];
   homeRecentMatches: RecentMatch[];
   awayRecentMatches: RecentMatch[];
   h2hRecentMatches: RecentMatch[];
@@ -136,6 +145,7 @@ export interface AnalysisResult {
   awayAdvancedStats: TeamAdvancedStats;
   homeContext: TeamContextSignals;
   awayContext: TeamContextSignals;
+  leagueTableRows?: LeagueTableRow[];
   marketOutlook: MarketOutlook;
   valueSignals: ValueSignal[];
   homeRecentMatches: RecentMatch[];

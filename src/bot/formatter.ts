@@ -49,6 +49,20 @@ const formatProbabilities = (result: AnalysisResult): string =>
     `- Under 2.5: ${pct(result.marketOutlook.under25)}`
   ].join("\n");
 
+const formatLeagueTableSection = (result: AnalysisResult): string | undefined => {
+  const rows = result.leagueTableRows ?? [];
+  if (rows.length === 0) return undefined;
+  return [
+    "<b>Tabela ligi (top):</b>",
+    ...rows.map((row) => {
+      const isSelected =
+        row.teamId === result.match.homeTeam.id || row.teamId === result.match.awayTeam.id;
+      const teamName = isSelected ? `<b>${esc(row.teamName)}</b>` : esc(row.teamName);
+      return `- ${row.rank}. ${teamName} | pkt: ${row.points} | mecze: ${row.played}`;
+    })
+  ].join("\n");
+};
+
 const formatRecentMatchesSection = (
   title: string,
   matches: Array<{ date: string; homeTeam: string; awayTeam: string; score: string; resultForFocus?: "W" | "D" | "L" }>
@@ -92,9 +106,9 @@ const formatAdvancedStatsSection = (
     `- Match over 1.5 (gole lacznie): ${pct(stats.over15Pct)}`,
     `- Match over 2.5 (gole lacznie): ${pct(stats.over25Pct)}`,
     `- Match over 3.5 (gole lacznie): ${pct(stats.over35Pct)}`,
-    `- Srednie rogi: ${stats.avgCorners.toFixed(2)} (proba: ${stats.cornersSamples})`,
-    `- Srednie kartki: ${stats.avgCards.toFixed(2)} (proba: ${stats.cardsSamples})`,
-    `- Srednie celne strzaly: ${stats.avgShotsOnTarget.toFixed(2)} (proba: ${stats.shotsSamples})`,
+    `- Srednie rogi (druzyna): ${stats.avgCorners.toFixed(2)} (proba: ${stats.cornersSamples})`,
+    `- Srednie kartki (druzyna): ${stats.avgCards.toFixed(2)} (proba: ${stats.cardsSamples})`,
+    `- Srednie celne strzaly (druzyna): ${stats.avgShotsOnTarget.toFixed(2)} (proba: ${stats.shotsSamples})`,
     `- Liczba meczow do overow: ${stats.sampleSize}`
   ].join("\n");
 
@@ -191,10 +205,12 @@ export const formatAnalysisMessage = (result: AnalysisResult): string => {
   const homeContextSection = formatContextSection(result.match.homeTeam.name, result.homeContext);
   const awayContextSection = formatContextSection(result.match.awayTeam.name, result.awayContext);
   const probabilitiesSection = formatProbabilities(result);
+  const leagueTableSection = formatLeagueTableSection(result);
 
   return [
     `<b>Mecz:</b> ${esc(result.match.homeTeam.name)} vs ${esc(result.match.awayTeam.name)}`,
     `<b>Liga:</b> <b>${esc(result.match.league)}</b>`,
+    ...(leagueTableSection ? [leagueTableSection] : []),
     predictionSection,
     statsSectionFormatted,
     homeRecentSection,
