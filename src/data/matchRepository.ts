@@ -105,9 +105,17 @@ export class MatchRepository {
       const away = Number(item?.goals?.away ?? 0);
       return home + away;
     });
+    const teamGoals = finished.map((item) => {
+      const homeId = Number(item?.teams?.home?.id ?? 0);
+      const homeGoals = Number(item?.goals?.home ?? 0);
+      const awayGoals = Number(item?.goals?.away ?? 0);
+      return homeId === teamId ? homeGoals : awayGoals;
+    });
     const sampleSize = goalTotals.length || 1;
     const over = (line: number): number =>
       goalTotals.length === 0 ? 0 : goalTotals.filter((total) => total > line).length / sampleSize;
+    const teamOver = (line: number): number =>
+      teamGoals.length === 0 ? 0 : teamGoals.filter((total) => total > line).length / sampleSize;
 
     let cornersSum = 0;
     let cardsSum = 0;
@@ -148,6 +156,10 @@ export class MatchRepository {
 
     return {
       sampleSize: goalTotals.length,
+      teamOver05Pct: teamOver(0.5),
+      teamOver15Pct: teamOver(1.5),
+      teamOver25Pct: teamOver(2.5),
+      teamOver35Pct: teamOver(3.5),
       over05Pct: over(0.5),
       over15Pct: over(1.5),
       over25Pct: over(2.5),

@@ -65,6 +65,10 @@ const formatRecentMatchesSection = (
 const formatAdvancedStatsSection = (
   teamName: string,
   stats: {
+    teamOver05Pct: number;
+    teamOver15Pct: number;
+    teamOver25Pct: number;
+    teamOver35Pct: number;
     over05Pct: number;
     over15Pct: number;
     over25Pct: number;
@@ -80,10 +84,14 @@ const formatAdvancedStatsSection = (
 ): string =>
   [
     `<b>Zaawansowane statystyki ${esc(teamName)}:</b>`,
-    `- Over 0.5: ${pct(stats.over05Pct)}`,
-    `- Over 1.5: ${pct(stats.over15Pct)}`,
-    `- Over 2.5: ${pct(stats.over25Pct)}`,
-    `- Over 3.5: ${pct(stats.over35Pct)}`,
+    `- Team over 0.5 (gole druzyny): ${pct(stats.teamOver05Pct)}`,
+    `- Team over 1.5 (gole druzyny): ${pct(stats.teamOver15Pct)}`,
+    `- Team over 2.5 (gole druzyny): ${pct(stats.teamOver25Pct)}`,
+    `- Team over 3.5 (gole druzyny): ${pct(stats.teamOver35Pct)}`,
+    `- Match over 0.5 (gole lacznie): ${pct(stats.over05Pct)}`,
+    `- Match over 1.5 (gole lacznie): ${pct(stats.over15Pct)}`,
+    `- Match over 2.5 (gole lacznie): ${pct(stats.over25Pct)}`,
+    `- Match over 3.5 (gole lacznie): ${pct(stats.over35Pct)}`,
     `- Srednie rogi: ${stats.avgCorners.toFixed(2)} (proba: ${stats.cornersSamples})`,
     `- Srednie kartki: ${stats.avgCards.toFixed(2)} (proba: ${stats.cardsSamples})`,
     `- Srednie celne strzaly: ${stats.avgShotsOnTarget.toFixed(2)} (proba: ${stats.shotsSamples})`,

@@ -37,6 +37,10 @@ export interface TeamForm {
 
 export interface TeamAdvancedStats {
   sampleSize: number;
+  teamOver05Pct: number;
+  teamOver15Pct: number;
+  teamOver25Pct: number;
+  teamOver35Pct: number;
   over05Pct: number;
   over15Pct: number;
   over25Pct: number;

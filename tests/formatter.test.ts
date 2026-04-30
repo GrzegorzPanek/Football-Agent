@@ -22,6 +22,10 @@ describe("formatAnalysisMessage", () => {
       statsSummary: ["line 1", "line 2"],
       homeAdvancedStats: {
         sampleSize: 5,
+        teamOver05Pct: 0.8,
+        teamOver15Pct: 0.4,
+        teamOver25Pct: 0.2,
+        teamOver35Pct: 0.1,
         over05Pct: 1,
         over15Pct: 0.8,
         over25Pct: 0.6,
@@ -35,6 +39,10 @@ describe("formatAnalysisMessage", () => {
       },
       awayAdvancedStats: {
         sampleSize: 5,
+        teamOver05Pct: 0.7,
+        teamOver15Pct: 0.3,
+        teamOver25Pct: 0.1,
+        teamOver35Pct: 0.0,
         over05Pct: 0.9,
         over15Pct: 0.7,
         over25Pct: 0.5,
