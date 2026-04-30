@@ -166,15 +166,9 @@ export const registerHandlers = (
       const label = `${entry.league} (${entry.leagueMatches.length})`.slice(0, 58);
       buttons.push([{ text: label, callback_data: `leaguepick:${dateInput}:${idx}` }]);
     });
-
-    buttons.push([{ text: "⚽ MECZE", callback_data: "noop" }]);
-    for (const item of matches.slice(0, 60)) {
-      const label = `${item.homeTeam} vs ${item.awayTeam}`.slice(0, 58);
-      buttons.push([{ text: label, callback_data: `fixture:${item.fixtureId}:${dateInput}` }]);
-    }
     buttons.push([{ text: "⬅️ Menu glowne", callback_data: "startmenu" }]);
 
-    await ctx.reply("Wybierz mecz do analizy lub analizuj wszystkie:", {
+    await ctx.reply(`Wybierz lige dla dnia ${dateInput}:`, {
       reply_markup: { inline_keyboard: buttons }
     });
   };
