@@ -40,6 +40,53 @@ const isAllowedPolishLeague = (leagueNameRaw: string, countryRaw: string): boole
 export class MatchRepository {
   constructor(private readonly apiClient: FootballApiClient) {}
 
+  private buildFirstLegState(
+    fixturePayload: any,
+    homeTeamId: number,
+    awayTeamId: number,
+    h2hFixtures: any[]
+  ): { homeGoals: number; awayGoals: number } | undefined {
+    const leagueId = Number(fixturePayload?.league?.id);
+    const season = Number(fixturePayload?.league?.season);
+    const currentKickoff = new Date(String(fixturePayload?.fixture?.date ?? "")).getTime();
+    if (!Number.isFinite(currentKickoff)) return undefined;
+
+    const previousLegs = (Array.isArray(h2hFixtures) ? h2hFixtures : [])
+      .filter((item) => this.isFinishedFixture(item))
+      .filter((item) => {
+        const itemDate = new Date(String(item?.fixture?.date ?? "")).getTime();
+        const itemLeagueId = Number(item?.league?.id);
+        const itemSeason = Number(item?.league?.season);
+        const itemHomeId = Number(item?.teams?.home?.id);
+        const itemAwayId = Number(item?.teams?.away?.id);
+        const validPair =
+          (itemHomeId === homeTeamId && itemAwayId === awayTeamId) ||
+          (itemHomeId === awayTeamId && itemAwayId === homeTeamId);
+        return (
+          validPair &&
+          itemDate < currentKickoff &&
+          itemLeagueId === leagueId &&
+          itemSeason === season
+        );
+      })
+      .sort((a, b) => {
+        const dateA = new Date(String(a?.fixture?.date ?? "")).getTime();
+        const dateB = new Date(String(b?.fixture?.date ?? "")).getTime();
+        return dateB - dateA;
+      });
+
+    if (previousLegs.length === 0) return undefined;
+    const firstLeg = previousLegs[0];
+    const firstLegHomeId = Number(firstLeg?.teams?.home?.id);
+    const goalsHome = Number(firstLeg?.goals?.home ?? 0);
+    const goalsAway = Number(firstLeg?.goals?.away ?? 0);
+
+    return {
+      homeGoals: firstLegHomeId === homeTeamId ? goalsHome : goalsAway,
+      awayGoals: firstLegHomeId === homeTeamId ? goalsAway : goalsHome
+    };
+  }
+
   private buildFallbackH2HFixtures(homeTeamId: number, awayTeamId: number, homeFixtures: any[], awayFixtures: any[]): any[] {
     const combined = [...homeFixtures, ...awayFixtures];
     const uniqueById = new Map<number, any>();
@@ -181,7 +228,9 @@ export class MatchRepository {
     standingsRow: any,
     standingsRows: any[],
     isCupCompetition: boolean,
-    cupRound?: string
+    cupRound?: string,
+    firstLegState?: { homeGoals: number; awayGoals: number },
+    isHomeTeamInCurrentFixture = false
   ): TeamContextSignals {
     const finished = recentFixtures.filter((item) => this.isFinishedFixture(item)).slice(0, 10);
     const matchDate = new Date(matchDateIso);
@@ -257,6 +306,27 @@ export class MatchRepository {
         motivationReason =
           "Rozgrywki pucharowe, ale bez jednoznacznej fazy eliminacyjnej w danych - przyjeto podwyzszona stawke.";
       }
+
+      if (isKnockoutRound && firstLegState) {
+        const teamFirstLegGoals = isHomeTeamInCurrentFixture ? firstLegState.homeGoals : firstLegState.awayGoals;
+        const oppFirstLegGoals = isHomeTeamInCurrentFixture ? firstLegState.awayGoals : firstLegState.homeGoals;
+        const firstLegLabel = `${firstLegState.homeGoals}:${firstLegState.awayGoals}`;
+        const roundLabel = cupRound ?? "drabinka";
+
+        if (teamFirstLegGoals > oppFirstLegGoals) {
+          motivationIndex = Math.max(motivationIndex, 0.9);
+          motivationReason =
+            `Faza pucharowa (${roundLabel}) - pierwszy mecz ${firstLegLabel}, druzyna broni zaliczki w dwumeczu.`;
+        } else if (teamFirstLegGoals < oppFirstLegGoals) {
+          motivationIndex = Math.max(motivationIndex, 0.97);
+          motivationReason =
+            `Faza pucharowa (${roundLabel}) - pierwszy mecz ${firstLegLabel}, druzyna musi odrabiac strate w dwumeczu.`;
+        } else {
+          motivationIndex = Math.max(motivationIndex, 0.94);
+          motivationReason =
+            `Faza pucharowa (${roundLabel}) - pierwszy mecz ${firstLegLabel}, dwumecz jest calkowicie otwarty.`;
+        }
+      }
     } else {
       const rank = Number(standingsRow?.rank);
       const points = Number(standingsRow?.points);
@@ -315,24 +385,21 @@ export class MatchRepository {
             ? Math.max(0, currentPoints - (pointsByRank.get(relegationCut) ?? currentPoints))
             : undefined;
 
-        const oneWinSwing = 3;
-        const oneDrawSwing = 1;
-
         if (hasEuropeanZone && rank > europeanCut && typeof pointsToEurope === "number" && pointsToEurope <= 6) {
           motivationIndex = Math.max(motivationIndex, pointsToEurope <= 3 ? 0.9 : 0.82);
           motivationReason =
-            `Druzyna traci ${pointsToEurope} pkt do strefy pucharowej; wygrana daje +${oneWinSwing}, remis +${oneDrawSwing}, porazka 0.`;
+            `Druzyna traci ${pointsToEurope} pkt do strefy pucharowej, wiec wynik mocno wplywa na szanse awansu do Europy.`;
         } else if (hasEuropeanZone && rank <= europeanCut) {
           const chaserGap = typeof pointsToRelegation === "number" ? pointsToRelegation : 0;
           motivationIndex = Math.max(motivationIndex, chaserGap <= 3 ? 0.86 : 0.76);
           motivationReason =
-            `Druzyna broni miejsca w strefie pucharowej; margines nad goniacymi ok. ${chaserGap} pkt (3/1/0 za wynik).`;
+            `Druzyna broni miejsca w strefie pucharowej; margines nad goniacymi to ok. ${chaserGap} pkt.`;
         }
 
         if (hasRelegationZone && rank >= relegationCut) {
           motivationIndex = Math.max(motivationIndex, 0.92);
           motivationReason =
-            "Druzyna jest w strefie spadkowej - kazdy mecz ma krytyczna wage punktowa (3/1/0).";
+            "Druzyna jest w strefie spadkowej - kazdy mecz ma krytyczna wage dla utrzymania.";
         } else if (hasRelegationZone && rank < relegationCut && typeof pointsToRelegation === "number" && pointsToRelegation <= 6) {
           motivationIndex = Math.max(motivationIndex, pointsToRelegation <= 3 ? 0.88 : 0.8);
           motivationReason =
@@ -475,6 +542,27 @@ export class MatchRepository {
     const awayFixtures = awayFormRes.data?.response ?? [];
     const h2hFixturesApi = h2hRes.data?.response ?? [];
     const oddsPayload = oddsRes.data?.response?.[0];
+    const fallbackH2H = this.buildFallbackH2HFixtures(match.homeTeam.id, match.awayTeam.id, homeFixtures, awayFixtures);
+    const mergedH2HMap = new Map<number, any>();
+    for (const item of [...(Array.isArray(h2hFixturesApi) ? h2hFixturesApi : []), ...fallbackH2H]) {
+      const fixtureId = Number(item?.fixture?.id);
+      if (Number.isFinite(fixtureId) && !mergedH2HMap.has(fixtureId)) {
+        mergedH2HMap.set(fixtureId, item);
+      }
+    }
+    const h2hFixtures = Array.from(mergedH2HMap.values())
+      .sort((a, b) => {
+        const dateA = new Date(String(a?.fixture?.date ?? "")).getTime();
+        const dateB = new Date(String(b?.fixture?.date ?? "")).getTime();
+        return dateB - dateA;
+      })
+      .slice(0, 8);
+    const firstLegState = this.buildFirstLegState(
+      fixturePayload,
+      match.homeTeam.id,
+      match.awayTeam.id,
+      h2hFixtures
+    );
 
     const homeStatsPayload = homeStatsRes.data?.response;
     const awayStatsPayload = awayStatsRes.data?.response;
@@ -532,7 +620,9 @@ export class MatchRepository {
       homeStanding,
       standingsRows,
       isCupCompetition,
-      cupRound
+      cupRound,
+      firstLegState,
+      true
     );
     const awayContext = this.computeContextSignals(
       match.awayTeam.id,
@@ -546,24 +636,10 @@ export class MatchRepository {
       awayStanding,
       standingsRows,
       isCupCompetition,
-      cupRound
+      cupRound,
+      firstLegState,
+      false
     );
-
-    const fallbackH2H = this.buildFallbackH2HFixtures(match.homeTeam.id, match.awayTeam.id, homeFixtures, awayFixtures);
-    const mergedH2HMap = new Map<number, any>();
-    for (const item of [...(Array.isArray(h2hFixturesApi) ? h2hFixturesApi : []), ...fallbackH2H]) {
-      const fixtureId = Number(item?.fixture?.id);
-      if (Number.isFinite(fixtureId) && !mergedH2HMap.has(fixtureId)) {
-        mergedH2HMap.set(fixtureId, item);
-      }
-    }
-    const h2hFixtures = Array.from(mergedH2HMap.values())
-      .sort((a, b) => {
-        const dateA = new Date(String(a?.fixture?.date ?? "")).getTime();
-        const dateB = new Date(String(b?.fixture?.date ?? "")).getTime();
-        return dateB - dateA;
-      })
-      .slice(0, 8);
 
     const dataset: MatchDataset = {
       match,
