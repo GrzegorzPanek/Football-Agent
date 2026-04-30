@@ -118,6 +118,7 @@ export class MatchRepository {
       moves.length > 0
         ? moves.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))[0]
         : undefined;
+    const hasMeaningfulMove = moves.some((item) => Math.abs(item.delta) >= 0.01);
 
     return {
       referenceAt: reference ? new Date(reference.timestamp).toISOString() : undefined,
@@ -138,9 +139,10 @@ export class MatchRepository {
       over25Delta,
       under25Delta,
       sentimentSummary,
-      strongestMove: strongestMove
-        ? `${strongestMove.label} ${strongestMove.delta < 0 ? "spadl" : strongestMove.delta > 0 ? "wzrosl" : "bez zmian"} o ${Math.abs(strongestMove.delta).toFixed(2)}`
-        : undefined
+      strongestMove:
+        strongestMove && hasMeaningfulMove
+          ? `${strongestMove.label} ${strongestMove.delta < 0 ? "spadl" : "wzrosl"} o ${Math.abs(strongestMove.delta).toFixed(2)}`
+          : undefined
     };
   }
 

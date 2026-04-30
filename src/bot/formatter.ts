@@ -57,7 +57,10 @@ const formatOddsTrendSection = (result: AnalysisResult): string | undefined => {
   const fmt = (current?: number, previous?: number, delta?: number): string => {
     if (typeof current !== "number") return "brak danych";
     if (typeof previous !== "number" || typeof delta !== "number") return `${current.toFixed(2)} (brak historii 24h)`;
-    const arrow = delta > 0 ? "⬆️" : delta < 0 ? "⬇️" : "➡️";
+    if (Math.abs(delta) < 0.01) {
+      return `${previous.toFixed(2)} -> ${current.toFixed(2)} (➡️ bez zmiany)`;
+    }
+    const arrow = delta > 0 ? "⬆️" : "⬇️";
     return `${previous.toFixed(2)} -> ${current.toFixed(2)} (${arrow} ${Math.abs(delta).toFixed(2)})`;
   };
   const reference = trend.referenceAt ? trend.referenceAt.slice(0, 16).replace("T", " ") : "brak danych";
@@ -74,7 +77,7 @@ const formatOddsTrendSection = (result: AnalysisResult): string | undefined => {
     `- UNDER 2.5 (24h): ${fmt(result.odds.under25, trend.under25Reference, trend.under25Delta)}`,
     `- Punkt startowy trendu: ${reference}`,
     `- Sentyment rynku: ${esc(trend.sentimentSummary)}`,
-    `- Najmocniejszy ruch: ${esc(trend.strongestMove ?? "brak danych")}`
+    `- Najmocniejszy ruch: ${esc(trend.strongestMove ?? "brak istotnej zmiany kursow")}`
   ].join("\n");
 };
 
