@@ -169,7 +169,7 @@ export class MatchRepository {
     matchDateIso: string,
     injuries: string[],
     standingsRow: any,
-    standingsSize: number,
+    standingsRows: any[],
     isCupCompetition: boolean,
     cupRound?: string
   ): TeamContextSignals {
@@ -249,18 +249,88 @@ export class MatchRepository {
       }
     } else {
       const rank = Number(standingsRow?.rank);
-      if (Number.isFinite(rank) && standingsSize > 0) {
-        if (rank <= 4) {
-          motivationIndex = Math.max(motivationIndex, 0.85);
-          motivationReason = "Druzyna jest w strefie walki o najwyzsze cele (top tabeli).";
+      const points = Number(standingsRow?.points);
+      const rows = Array.isArray(standingsRows) ? standingsRows : [];
+      if (Number.isFinite(rank) && rows.length > 0) {
+        const byRank = rows
+          .map((row: any) => ({
+            rank: Number(row?.rank),
+            points: Number(row?.points),
+            description: String(row?.description ?? "").toLowerCase()
+          }))
+          .filter((row) => Number.isFinite(row.rank) && Number.isFinite(row.points))
+          .sort((a, b) => a.rank - b.rank);
+
+        const hasEuropeanZone = byRank.some((row) =>
+          row.description.includes("champions") ||
+          row.description.includes("europa") ||
+          row.description.includes("conference")
+        );
+        const hasRelegationZone = byRank.some((row) =>
+          row.description.includes("relegation") ||
+          row.description.includes("descent") ||
+          row.description.includes("drop")
+        );
+
+        const europeanCut = byRank
+          .filter((row) =>
+            row.description.includes("champions") ||
+            row.description.includes("europa") ||
+            row.description.includes("conference")
+          )
+          .reduce((max, row) => Math.max(max, row.rank), 0);
+
+        const relegationCut = byRank
+          .filter((row) =>
+            row.description.includes("relegation") ||
+            row.description.includes("descent") ||
+            row.description.includes("drop")
+          )
+          .reduce((min, row) => Math.min(min, row.rank), Number.POSITIVE_INFINITY);
+
+        const pointsByRank = new Map<number, number>();
+        for (const row of byRank) pointsByRank.set(row.rank, row.points);
+        const currentPoints = Number.isFinite(points) ? points : 0;
+
+        const pointsToEurope =
+          hasEuropeanZone && Number.isFinite(pointsByRank.get(Math.max(1, europeanCut)) ?? NaN)
+            ? Math.max(0, (pointsByRank.get(Math.max(1, europeanCut)) ?? currentPoints) - currentPoints)
+            : undefined;
+        const pointsToSafety =
+          hasRelegationZone && Number.isFinite(pointsByRank.get(Math.max(1, relegationCut - 1)) ?? NaN)
+            ? Math.max(0, (pointsByRank.get(Math.max(1, relegationCut - 1)) ?? currentPoints) - currentPoints)
+            : undefined;
+        const pointsToRelegation =
+          hasRelegationZone && Number.isFinite(pointsByRank.get(relegationCut) ?? NaN)
+            ? Math.max(0, currentPoints - (pointsByRank.get(relegationCut) ?? currentPoints))
+            : undefined;
+
+        const oneWinSwing = 3;
+        const oneDrawSwing = 1;
+
+        if (hasEuropeanZone && rank > europeanCut && typeof pointsToEurope === "number" && pointsToEurope <= 6) {
+          motivationIndex = Math.max(motivationIndex, pointsToEurope <= 3 ? 0.9 : 0.82);
+          motivationReason =
+            `Druzyna traci ${pointsToEurope} pkt do strefy pucharowej; wygrana daje +${oneWinSwing}, remis +${oneDrawSwing}, porazka 0.`;
+        } else if (hasEuropeanZone && rank <= europeanCut) {
+          const chaserGap = typeof pointsToRelegation === "number" ? pointsToRelegation : 0;
+          motivationIndex = Math.max(motivationIndex, chaserGap <= 3 ? 0.86 : 0.76);
+          motivationReason =
+            `Druzyna broni miejsca w strefie pucharowej; margines nad goniacymi ok. ${chaserGap} pkt (3/1/0 za wynik).`;
         }
-        if (rank >= Math.max(standingsSize - 2, 1)) {
-          motivationIndex = Math.max(motivationIndex, 0.82);
-          motivationReason = "Druzyna jest blisko strefy spadkowej i musi punktowac.";
-        }
-        if (rank > 4 && rank < standingsSize - 2) {
+
+        if (hasRelegationZone && rank >= relegationCut) {
+          motivationIndex = Math.max(motivationIndex, 0.92);
+          motivationReason =
+            "Druzyna jest w strefie spadkowej - kazdy mecz ma krytyczna wage punktowa (3/1/0).";
+        } else if (hasRelegationZone && rank < relegationCut && typeof pointsToRelegation === "number" && pointsToRelegation <= 6) {
+          motivationIndex = Math.max(motivationIndex, pointsToRelegation <= 3 ? 0.88 : 0.8);
+          motivationReason =
+            `Druzyna jest blisko strefy spadkowej (zapas ${pointsToRelegation} pkt), dlatego wynik mocno wplywa na ryzyko spadku.`;
+        } else if (typeof pointsToEurope === "number" && pointsToEurope > 6 && typeof pointsToRelegation === "number" && pointsToRelegation > 6) {
           motivationIndex = Math.max(motivationIndex, 0.55);
-          motivationReason = "Pozycja w tabeli sugeruje umiarkowana presje na wynik.";
+          motivationReason =
+            "Pozycja i dystans punktowy do kluczowych stref sugeruja umiarkowana stawke meczu.";
         }
       }
     }
@@ -451,7 +521,7 @@ export class MatchRepository {
             .filter((name: string) => name.length > 0)
         : [],
       homeStanding,
-      standingsRows.length,
+      standingsRows,
       isCupCompetition,
       cupRound
     );
@@ -465,7 +535,7 @@ export class MatchRepository {
             .filter((name: string) => name.length > 0)
         : [],
       awayStanding,
-      standingsRows.length,
+      standingsRows,
       isCupCompetition,
       cupRound
     );
