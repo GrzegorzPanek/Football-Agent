@@ -87,6 +87,14 @@ export const registerHandlers = (
   matchRepository: MatchRepository,
   analysisEngine: AnalysisEngine
 ): void => {
+  const buildBackToDayMenuKeyboard = (dateInput: string): { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } => ({
+    inline_keyboard: [[{ text: "⬅️ Wroc do menu dnia", callback_data: `daypick:${dateInput}` }]]
+  });
+
+  const buildBackToMainMenuKeyboard = (): { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } => ({
+    inline_keyboard: [[{ text: "⬅️ Wroc do menu glownego", callback_data: "startmenu" }]]
+  });
+
   const sendHtmlInChunks = async (ctx: any, text: string, maxLength = 3800): Promise<void> => {
     if (text.length <= maxLength) {
       await ctx.reply(text, { parse_mode: "HTML" });
@@ -153,7 +161,7 @@ export const registerHandlers = (
     buttons.push([{ text: "⚽ MECZE", callback_data: "noop" }]);
     for (const item of matches.slice(0, 60)) {
       const label = `${item.homeTeam} vs ${item.awayTeam}`.slice(0, 58);
-      buttons.push([{ text: label, callback_data: `fixture:${item.fixtureId}` }]);
+      buttons.push([{ text: label, callback_data: `fixture:${item.fixtureId}:${dateInput}` }]);
     }
 
     await ctx.reply("Wybierz mecz do analizy lub analizuj wszystkie:", {
@@ -183,7 +191,9 @@ export const registerHandlers = (
       await ctx.reply("Nie udalo sie przygotowac analiz dla tej daty.");
       return;
     }
-    await ctx.reply(`Zakonczono analize ${sentCount} meczow na ${selectedDate}.`);
+    await ctx.reply(`Zakonczono analize ${sentCount} meczow na ${selectedDate}.`, {
+      reply_markup: buildBackToDayMenuKeyboard(selectedDate)
+    });
   };
 
   const runLeagueDateAnalysis = async (ctx: any, selectedDate: string, leagueName: string): Promise<void> => {
@@ -206,7 +216,9 @@ export const registerHandlers = (
         logger.warn({ error, fixtureId: item.fixtureId }, "Failed single match in league-date analysis");
       }
     }
-    await ctx.reply(`Zakonczono analize ${sentCount} meczow ligi "${leagueName}" na ${selectedDate}.`);
+    await ctx.reply(`Zakonczono analize ${sentCount} meczow ligi "${leagueName}" na ${selectedDate}.`, {
+      reply_markup: buildBackToDayMenuKeyboard(selectedDate)
+    });
   };
 
   const startKeyboard = {
@@ -331,6 +343,7 @@ export const registerHandlers = (
       const dataset = await matchRepository.loadDataset(fixtureId);
       const result = analysisEngine.analyze(dataset);
       await sendHtmlInChunks(ctx, formatAnalysisMessage(result));
+      await ctx.reply("Wrocic do menu?", { reply_markup: buildBackToMainMenuKeyboard() });
     } catch (error) {
       logger.error({ error, query }, "Failed to analyze fixture");
       await ctx.reply("Nie udalo sie pobrac danych dla tego meczu. Sprobuj ponownie lub uzyj /today.");
@@ -367,7 +380,7 @@ export const registerHandlers = (
       ];
       for (const item of selected.leagueMatches) {
         const label = `${item.homeTeam} vs ${item.awayTeam}`.slice(0, 58);
-        buttons.push([{ text: label, callback_data: `fixture:${item.fixtureId}` }]);
+        buttons.push([{ text: label, callback_data: `fixture:${item.fixtureId}:${dateInput}` }]);
       }
       await ctx.reply("Wybierz mecz z ligi lub analizuj cala lige:", {
         reply_markup: { inline_keyboard: buttons }
@@ -408,14 +421,18 @@ export const registerHandlers = (
     }
   });
 
-  bot.action(/^fixture:(\d+)$/, async (ctx: any) => {
+  bot.action(/^fixture:(\d+)(?::(\d{4}-\d{2}-\d{2}))?$/, async (ctx: any) => {
     const fixtureId = Number(ctx.match?.[1]);
+    const selectedDate = ctx.match?.[2];
     await ctx.answerCbQuery();
     try {
       await ctx.reply("Analizuje wybrany mecz, chwila...");
       const dataset = await matchRepository.loadDataset(fixtureId);
       const result = analysisEngine.analyze(dataset);
       await sendHtmlInChunks(ctx, formatAnalysisMessage(result));
+      await ctx.reply("Wrocic do menu?", {
+        reply_markup: selectedDate ? buildBackToDayMenuKeyboard(selectedDate) : buildBackToMainMenuKeyboard()
+      });
     } catch (error) {
       logger.error({ error, fixtureId }, "Failed fixture callback");
       await ctx.reply("Nie udalo sie pobrac analizy dla wybranego meczu.");
@@ -459,5 +476,10 @@ export const registerHandlers = (
   bot.action("start:help", async (ctx: any) => {
     await ctx.answerCbQuery();
     await ctx.reply(usage);
+  });
+
+  bot.action("startmenu", async (ctx: any) => {
+    await ctx.answerCbQuery();
+    await ctx.reply("Menu glowne:", { reply_markup: startKeyboard });
   });
 };
