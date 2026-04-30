@@ -42,6 +42,34 @@ const isAllowedPolishLeague = (leagueNameRaw: string, countryRaw: string): boole
 export class MatchRepository {
   constructor(private readonly apiClient: FootballApiClient) {}
 
+  private buildFallbackH2HFixtures(homeTeamId: number, awayTeamId: number, homeFixtures: any[], awayFixtures: any[]): any[] {
+    const combined = [...homeFixtures, ...awayFixtures];
+    const uniqueById = new Map<number, any>();
+    for (const item of combined) {
+      const fixtureId = Number(item?.fixture?.id);
+      if (Number.isFinite(fixtureId) && !uniqueById.has(fixtureId)) {
+        uniqueById.set(fixtureId, item);
+      }
+    }
+
+    return Array.from(uniqueById.values())
+      .filter((item) => this.isFinishedFixture(item))
+      .filter((item) => {
+        const homeId = Number(item?.teams?.home?.id);
+        const awayId = Number(item?.teams?.away?.id);
+        return (
+          (homeId === homeTeamId && awayId === awayTeamId) ||
+          (homeId === awayTeamId && awayId === homeTeamId)
+        );
+      })
+      .sort((a, b) => {
+        const dateA = new Date(String(a?.fixture?.date ?? "")).getTime();
+        const dateB = new Date(String(b?.fixture?.date ?? "")).getTime();
+        return dateB - dateA;
+      })
+      .slice(0, 10);
+  }
+
   private formatDateOffset(days: number): string {
     const date = new Date();
     date.setDate(date.getDate() + days);
@@ -356,7 +384,7 @@ export class MatchRepository {
 
     const homeFixtures = homeFormRes.data?.response ?? [];
     const awayFixtures = awayFormRes.data?.response ?? [];
-    const h2hFixtures = h2hRes.data?.response ?? [];
+    const h2hFixturesApi = h2hRes.data?.response ?? [];
     const oddsPayload = oddsRes.data?.response?.[0];
 
     const homeStatsPayload = homeStatsRes.data?.response;
@@ -431,6 +459,11 @@ export class MatchRepository {
       isCupCompetition,
       cupRound
     );
+
+    const h2hFixtures =
+      Array.isArray(h2hFixturesApi) && h2hFixturesApi.length > 0
+        ? h2hFixturesApi
+        : this.buildFallbackH2HFixtures(match.homeTeam.id, match.awayTeam.id, homeFixtures, awayFixtures);
 
     const dataset: MatchDataset = {
       match,
