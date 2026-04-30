@@ -88,7 +88,10 @@ export const registerHandlers = (
   analysisEngine: AnalysisEngine
 ): void => {
   const buildBackToDayMenuKeyboard = (dateInput: string): { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } => ({
-    inline_keyboard: [[{ text: "⬅️ Wroc do menu dnia", callback_data: `daypick:${dateInput}` }]]
+    inline_keyboard: [
+      [{ text: "⬅️ Wroc do menu dnia", callback_data: `daypick:${dateInput}` }],
+      [{ text: "⬅️ Menu glowne", callback_data: "startmenu" }]
+    ]
   });
 
   const buildBackToMainMenuKeyboard = (): { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } => ({
@@ -163,6 +166,7 @@ export const registerHandlers = (
       const label = `${item.homeTeam} vs ${item.awayTeam}`.slice(0, 58);
       buttons.push([{ text: label, callback_data: `fixture:${item.fixtureId}:${dateInput}` }]);
     }
+    buttons.push([{ text: "⬅️ Menu glowne", callback_data: "startmenu" }]);
 
     await ctx.reply("Wybierz mecz do analizy lub analizuj wszystkie:", {
       reply_markup: { inline_keyboard: buttons }
@@ -265,7 +269,9 @@ export const registerHandlers = (
     const messageText = "text" in ctx.message ? ctx.message.text : "";
     const dateInput = messageText.replace(/^\/day(@\w+)?\s*/i, "").trim();
     if (!dateInput) {
-      await ctx.reply("Wybierz dzien:", { reply_markup: buildDayPickerKeyboard() });
+      const dayPicker = buildDayPickerKeyboard();
+      dayPicker.inline_keyboard.push([{ text: "⬅️ Menu glowne", callback_data: "startmenu" }]);
+      await ctx.reply("Wybierz dzien:", { reply_markup: dayPicker });
       return;
     }
     if (!datePattern.test(dateInput)) {
@@ -376,7 +382,8 @@ export const registerHandlers = (
 
       const buttons: Array<Array<{ text: string; callback_data: string }>> = [
         [{ text: `Analizuj cala lige (${selected.league})`, callback_data: `leagueall:${dateInput}:${leagueIndex}` }],
-        [{ text: "Wroc do listy dni", callback_data: "daymenu" }]
+        [{ text: "Wroc do listy dni", callback_data: "daymenu" }],
+        [{ text: "⬅️ Menu glowne", callback_data: "startmenu" }]
       ];
       for (const item of selected.leagueMatches) {
         const label = `${item.homeTeam} vs ${item.awayTeam}`.slice(0, 58);
@@ -441,7 +448,9 @@ export const registerHandlers = (
 
   bot.action("daymenu", async (ctx: any) => {
     await ctx.answerCbQuery();
-    await ctx.reply("Wybierz dzien:", { reply_markup: buildDayPickerKeyboard() });
+    const dayPicker = buildDayPickerKeyboard();
+    dayPicker.inline_keyboard.push([{ text: "⬅️ Menu glowne", callback_data: "startmenu" }]);
+    await ctx.reply("Wybierz dzien:", { reply_markup: dayPicker });
   });
 
   bot.action("noop", async (ctx: any) => {
@@ -460,7 +469,9 @@ export const registerHandlers = (
 
   bot.action("start:daypicker", async (ctx: any) => {
     await ctx.answerCbQuery();
-    await ctx.reply("Wybierz dzien:", { reply_markup: buildDayPickerKeyboard() });
+    const dayPicker = buildDayPickerKeyboard();
+    dayPicker.inline_keyboard.push([{ text: "⬅️ Menu glowne", callback_data: "startmenu" }]);
+    await ctx.reply("Wybierz dzien:", { reply_markup: dayPicker });
   });
 
   bot.action("start:analyze:today", async (ctx: any) => {
