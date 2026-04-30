@@ -9,7 +9,15 @@ import {
   summarizeH2HMatches,
   summarizeRecentMatches
 } from "./normalizers";
-import { LeagueTableRow, MatchCard, MatchDataset, TeamAdvancedStats, TeamContextSignals } from "../types";
+import {
+  LeagueTableRow,
+  MatchCard,
+  MatchDataset,
+  OddsSnapshot,
+  OddsTrendInfo,
+  TeamAdvancedStats,
+  TeamContextSignals
+} from "../types";
 import { logger } from "../utils/logger";
 
 const TOP_EUROPEAN_LEAGUE_IDS = new Set<number>([
@@ -39,6 +47,79 @@ const isAllowedPolishLeague = (leagueNameRaw: string, countryRaw: string): boole
 
 export class MatchRepository {
   constructor(private readonly apiClient: FootballApiClient) {}
+  private readonly oddsHistoryTtlSeconds = 60 * 60 * 24;
+
+  private updateOddsHistory(fixtureId: number, odds?: OddsSnapshot): Array<{ timestamp: number; odds: OddsSnapshot }> {
+    if (!odds) return [];
+    const key = `odds-history:${fixtureId}`;
+    const now = Date.now();
+    const existing = appCache.get<Array<{ timestamp: number; odds: OddsSnapshot }>>(key) ?? [];
+    const next = [...existing, { timestamp: now, odds }]
+      .filter((item) => now - item.timestamp <= this.oddsHistoryTtlSeconds * 1000)
+      .slice(-200);
+    appCache.set(key, next, this.oddsHistoryTtlSeconds);
+    return next;
+  }
+
+  private buildOddsTrend(
+    odds: OddsSnapshot | undefined,
+    history: Array<{ timestamp: number; odds: OddsSnapshot }>,
+    bookmakersCount: number
+  ): OddsTrendInfo | undefined {
+    if (!odds) return undefined;
+    const now = Date.now();
+    const cutoff = now - 24 * 60 * 60 * 1000;
+    const inWindow = history.filter((item) => item.timestamp >= cutoff);
+    const reference = inWindow.length > 0 ? inWindow[0] : undefined;
+    const delta = (current: number, prev?: number): number | undefined =>
+      typeof prev === "number" ? current - prev : undefined;
+
+    const homeDelta = delta(odds.home, reference?.odds.home);
+    const drawDelta = delta(odds.draw, reference?.odds.draw);
+    const awayDelta = delta(odds.away, reference?.odds.away);
+
+    const implied = {
+      home: 1 / odds.home,
+      draw: 1 / odds.draw,
+      away: 1 / odds.away
+    };
+    const impliedSum = implied.home + implied.draw + implied.away;
+    const norm = {
+      home: implied.home / impliedSum,
+      draw: implied.draw / impliedSum,
+      away: implied.away / impliedSum
+    };
+    const sentimentSummary =
+      norm.home >= norm.away && norm.home >= norm.draw
+        ? `Rynek faworyzuje gospodarza (${(norm.home * 100).toFixed(1)}% implied).`
+        : norm.away >= norm.home && norm.away >= norm.draw
+          ? `Rynek faworyzuje gosci (${(norm.away * 100).toFixed(1)}% implied).`
+          : `Rynek mocno wycenia remis (${(norm.draw * 100).toFixed(1)}% implied).`;
+
+    const moves = [
+      { label: "HOME", delta: homeDelta },
+      { label: "DRAW", delta: drawDelta },
+      { label: "AWAY", delta: awayDelta }
+    ].filter((item) => typeof item.delta === "number") as Array<{ label: string; delta: number }>;
+
+    const strongestMove =
+      moves.length > 0
+        ? moves.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))[0]
+        : undefined;
+
+    return {
+      referenceAt: reference ? new Date(reference.timestamp).toISOString() : undefined,
+      windowHours: 24,
+      bookmakersCount,
+      homeDelta,
+      drawDelta,
+      awayDelta,
+      sentimentSummary,
+      strongestMove: strongestMove
+        ? `${strongestMove.label} ${strongestMove.delta < 0 ? "spadl" : strongestMove.delta > 0 ? "wzrosl" : "bez zmian"} o ${Math.abs(strongestMove.delta).toFixed(2)}`
+        : undefined
+    };
+  }
 
   private buildFirstLegState(
     fixturePayload: any,
@@ -556,6 +637,10 @@ export class MatchRepository {
     const awayFixtures = awayFormRes.data?.response ?? [];
     const h2hFixturesApi = h2hRes.data?.response ?? [];
     const oddsPayload = oddsRes.data?.response?.[0];
+    const odds = normalizeOdds(oddsPayload);
+    const bookmakersCount = Array.isArray(oddsPayload?.bookmakers) ? oddsPayload.bookmakers.length : 0;
+    const oddsHistory = this.updateOddsHistory(match.fixtureId, odds);
+    const oddsTrend = this.buildOddsTrend(odds, oddsHistory, bookmakersCount);
     const fallbackH2H = this.buildFallbackH2HFixtures(match.homeTeam.id, match.awayTeam.id, homeFixtures, awayFixtures);
     const mergedH2HMap = new Map<number, any>();
     for (const item of [...(Array.isArray(h2hFixturesApi) ? h2hFixturesApi : []), ...fallbackH2H]) {
@@ -688,7 +773,8 @@ export class MatchRepository {
       homeRecentMatches: summarizeRecentMatches(match.homeTeam.id, homeFixtures, 10),
       awayRecentMatches: summarizeRecentMatches(match.awayTeam.id, awayFixtures, 10),
       h2hRecentMatches: summarizeH2HMatches(h2hFixtures, match.homeTeam.id, match.awayTeam.id, 8),
-      odds: normalizeOdds(oddsPayload)
+      odds,
+      oddsTrend
     };
 
     appCache.set(cacheKey, dataset);

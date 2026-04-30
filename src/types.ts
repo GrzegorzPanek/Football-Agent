@@ -89,6 +89,17 @@ export interface OddsSnapshot {
   under25?: number;
 }
 
+export interface OddsTrendInfo {
+  referenceAt?: string;
+  windowHours: number;
+  bookmakersCount: number;
+  homeDelta?: number;
+  drawDelta?: number;
+  awayDelta?: number;
+  sentimentSummary: string;
+  strongestMove?: string;
+}
+
 export interface MatchDataset {
   match: MatchInfo;
   homeForm: TeamForm;
@@ -103,6 +114,7 @@ export interface MatchDataset {
   awayRecentMatches: RecentMatch[];
   h2hRecentMatches: RecentMatch[];
   odds?: OddsSnapshot;
+  oddsTrend?: OddsTrendInfo;
 }
 
 export interface MatchPrediction {
@@ -152,5 +164,7 @@ export interface AnalysisResult {
   homeRecentMatches: RecentMatch[];
   awayRecentMatches: RecentMatch[];
   h2hRecentMatches: RecentMatch[];
+  odds?: OddsSnapshot;
+  oddsTrend?: OddsTrendInfo;
   bestBet?: BetRecommendation;
 }

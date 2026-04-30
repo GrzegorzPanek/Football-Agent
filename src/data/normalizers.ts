@@ -121,32 +121,39 @@ export const normalizeOdds = (oddsPayload: any): OddsSnapshot | undefined => {
   const bookmakers = oddsPayload?.bookmakers;
   if (!Array.isArray(bookmakers) || bookmakers.length === 0) return undefined;
 
-  const bets = bookmakers[0]?.bets;
-  const oneXTwo = Array.isArray(bets) ? bets.find((b) => b?.name === "Match Winner") : undefined;
-  if (!oneXTwo || !Array.isArray(oneXTwo.values)) return undefined;
+  const collectOdds = (betName: string, valueKey: string): number[] =>
+    bookmakers
+      .map((bookmaker: any) => {
+        const bets = Array.isArray(bookmaker?.bets) ? bookmaker.bets : [];
+        const bet = bets.find((b: any) => b?.name === betName);
+        if (!bet || !Array.isArray(bet.values)) return undefined;
+        const oddRaw = bet.values.find((v: any) => String(v?.value).toLowerCase() === valueKey.toLowerCase())?.odd;
+        const odd = Number(oddRaw);
+        return Number.isFinite(odd) && odd > 1 ? odd : undefined;
+      })
+      .filter((odd: number | undefined): odd is number => typeof odd === "number");
 
-  const home = oneXTwo.values.find((v: any) => v?.value === "Home")?.odd;
-  const draw = oneXTwo.values.find((v: any) => v?.value === "Draw")?.odd;
-  const away = oneXTwo.values.find((v: any) => v?.value === "Away")?.odd;
+  const avg = (values: number[]): number | undefined =>
+    values.length > 0 ? values.reduce((acc, v) => acc + v, 0) / values.length : undefined;
 
+  const home = avg(collectOdds("Match Winner", "Home"));
+  const draw = avg(collectOdds("Match Winner", "Draw"));
+  const away = avg(collectOdds("Match Winner", "Away"));
   if (!home || !draw || !away) return undefined;
 
-  const btts = Array.isArray(bets) ? bets.find((b) => b?.name === "Both Teams Score") : undefined;
-  const goalsOverUnder = Array.isArray(bets) ? bets.find((b) => b?.name === "Goals Over/Under") : undefined;
-
-  const bttsYes = btts?.values?.find((v: any) => String(v?.value).toLowerCase() === "yes")?.odd;
-  const bttsNo = btts?.values?.find((v: any) => String(v?.value).toLowerCase() === "no")?.odd;
-  const over25 = goalsOverUnder?.values?.find((v: any) => String(v?.value).toLowerCase() === "over 2.5")?.odd;
-  const under25 = goalsOverUnder?.values?.find((v: any) => String(v?.value).toLowerCase() === "under 2.5")?.odd;
+  const bttsYes = avg(collectOdds("Both Teams Score", "Yes"));
+  const bttsNo = avg(collectOdds("Both Teams Score", "No"));
+  const over25 = avg(collectOdds("Goals Over/Under", "Over 2.5"));
+  const under25 = avg(collectOdds("Goals Over/Under", "Under 2.5"));
 
   return {
-    home: Number(home),
-    draw: Number(draw),
-    away: Number(away),
-    ...(bttsYes ? { bttsYes: Number(bttsYes) } : {}),
-    ...(bttsNo ? { bttsNo: Number(bttsNo) } : {}),
-    ...(over25 ? { over25: Number(over25) } : {}),
-    ...(under25 ? { under25: Number(under25) } : {})
+    home,
+    draw,
+    away,
+    ...(bttsYes ? { bttsYes } : {}),
+    ...(bttsNo ? { bttsNo } : {}),
+    ...(over25 ? { over25 } : {}),
+    ...(under25 ? { under25 } : {})
   };
 };
 

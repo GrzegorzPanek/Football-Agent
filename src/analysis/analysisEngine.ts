@@ -35,6 +35,8 @@ export class AnalysisEngine {
       homeRecentMatches: dataset.homeRecentMatches,
       awayRecentMatches: dataset.awayRecentMatches,
       h2hRecentMatches: dataset.h2hRecentMatches,
+      odds: dataset.odds,
+      oddsTrend: dataset.oddsTrend,
       bestBet
     };
   }

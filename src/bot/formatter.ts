@@ -49,6 +49,25 @@ const formatProbabilities = (result: AnalysisResult): string =>
     `- Under 2.5: ${pct(result.marketOutlook.under25)}`
   ].join("\n");
 
+const formatOddsTrendSection = (result: AnalysisResult): string | undefined => {
+  if (!result.odds || !result.oddsTrend) return undefined;
+  const trend = result.oddsTrend;
+  const fmt = (delta?: number): string =>
+    typeof delta === "number" ? `${delta > 0 ? "⬆️" : delta < 0 ? "⬇️" : "➡️"} ${delta.toFixed(2)}` : "brak danych";
+  const reference = trend.referenceAt ? trend.referenceAt.slice(0, 16).replace("T", " ") : "brak danych";
+  return [
+    "<b>Rynek bukmacherski (trend 24h):</b>",
+    `- Bookmakerzy w probce: ${trend.bookmakersCount}`,
+    `- Kurs 1X2 teraz: 1=${result.odds.home.toFixed(2)} | X=${result.odds.draw.toFixed(2)} | 2=${result.odds.away.toFixed(2)}`,
+    `- Zmiana 24h HOME: ${fmt(trend.homeDelta)}`,
+    `- Zmiana 24h DRAW: ${fmt(trend.drawDelta)}`,
+    `- Zmiana 24h AWAY: ${fmt(trend.awayDelta)}`,
+    `- Punkt odniesienia: ${reference}`,
+    `- Sentyment rynku: ${esc(trend.sentimentSummary)}`,
+    `- Najmocniejszy ruch: ${esc(trend.strongestMove ?? "brak danych")}`
+  ].join("\n");
+};
+
 const formatLeagueTableSection = (result: AnalysisResult): string | undefined => {
   const rows = result.leagueTableRows ?? [];
   if (rows.length === 0) return undefined;
@@ -242,6 +261,7 @@ export const formatAnalysisMessage = (result: AnalysisResult): string => {
   const awayContextSection = formatContextSection(result.match.awayTeam.name, result.awayContext);
   const probabilitiesSection = formatProbabilities(result);
   const leagueTableSection = formatLeagueTableSection(result);
+  const oddsTrendSection = formatOddsTrendSection(result);
 
   return [
     `<b>Mecz:</b> ${esc(result.match.homeTeam.name)} vs ${esc(result.match.awayTeam.name)}`,
@@ -258,6 +278,7 @@ export const formatAnalysisMessage = (result: AnalysisResult): string => {
     homeContextSection,
     awayContextSection,
     probabilitiesSection,
+    ...(oddsTrendSection ? [oddsTrendSection] : []),
     valueSection,
     bestBetSection,
     "<i>Disclaimer: analiza ma charakter informacyjny, nie jest poradą finansową.</i>"
