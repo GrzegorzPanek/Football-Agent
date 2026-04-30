@@ -93,6 +93,13 @@ export interface OddsTrendInfo {
   referenceAt?: string;
   windowHours: number;
   bookmakersCount: number;
+  homeReference?: number;
+  drawReference?: number;
+  awayReference?: number;
+  bttsYesReference?: number;
+  bttsNoReference?: number;
+  over25Reference?: number;
+  under25Reference?: number;
   homeDelta?: number;
   drawDelta?: number;
   awayDelta?: number;

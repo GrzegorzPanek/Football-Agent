@@ -54,21 +54,25 @@ const formatProbabilities = (result: AnalysisResult): string =>
 const formatOddsTrendSection = (result: AnalysisResult): string | undefined => {
   if (!result.odds || !result.oddsTrend) return undefined;
   const trend = result.oddsTrend;
-  const fmt = (delta?: number): string =>
-    typeof delta === "number" ? `${delta > 0 ? "⬆️" : delta < 0 ? "⬇️" : "➡️"} ${delta.toFixed(2)}` : "brak danych";
+  const fmt = (current?: number, previous?: number, delta?: number): string => {
+    if (typeof current !== "number") return "brak danych";
+    if (typeof previous !== "number" || typeof delta !== "number") return `${current.toFixed(2)} (brak historii 24h)`;
+    const arrow = delta > 0 ? "⬆️" : delta < 0 ? "⬇️" : "➡️";
+    return `${previous.toFixed(2)} -> ${current.toFixed(2)} (${arrow} ${Math.abs(delta).toFixed(2)})`;
+  };
   const reference = trend.referenceAt ? trend.referenceAt.slice(0, 16).replace("T", " ") : "brak danych";
   return [
     sectionHeader("💹", "Rynek bukmacherski (trend 24h)"),
-    `- Bookmakerzy w probce: ${trend.bookmakersCount}`,
+    `- Liczba bookmakerow uwzglednionych: ${trend.bookmakersCount}`,
     `- Kurs 1X2 teraz: 1=${result.odds.home.toFixed(2)} | X=${result.odds.draw.toFixed(2)} | 2=${result.odds.away.toFixed(2)}`,
-    `- Zmiana 24h HOME: ${fmt(trend.homeDelta)}`,
-    `- Zmiana 24h DRAW: ${fmt(trend.drawDelta)}`,
-    `- Zmiana 24h AWAY: ${fmt(trend.awayDelta)}`,
-    `- Zmiana 24h BTTS YES: ${fmt(trend.bttsYesDelta)}`,
-    `- Zmiana 24h BTTS NO: ${fmt(trend.bttsNoDelta)}`,
-    `- Zmiana 24h OVER 2.5: ${fmt(trend.over25Delta)}`,
-    `- Zmiana 24h UNDER 2.5: ${fmt(trend.under25Delta)}`,
-    `- Punkt odniesienia: ${reference}`,
+    `- HOME (24h): ${fmt(result.odds.home, trend.homeReference, trend.homeDelta)}`,
+    `- DRAW (24h): ${fmt(result.odds.draw, trend.drawReference, trend.drawDelta)}`,
+    `- AWAY (24h): ${fmt(result.odds.away, trend.awayReference, trend.awayDelta)}`,
+    `- BTTS YES (24h): ${fmt(result.odds.bttsYes, trend.bttsYesReference, trend.bttsYesDelta)}`,
+    `- BTTS NO (24h): ${fmt(result.odds.bttsNo, trend.bttsNoReference, trend.bttsNoDelta)}`,
+    `- OVER 2.5 (24h): ${fmt(result.odds.over25, trend.over25Reference, trend.over25Delta)}`,
+    `- UNDER 2.5 (24h): ${fmt(result.odds.under25, trend.under25Reference, trend.under25Delta)}`,
+    `- Punkt startowy trendu: ${reference}`,
     `- Sentyment rynku: ${esc(trend.sentimentSummary)}`,
     `- Najmocniejszy ruch: ${esc(trend.strongestMove ?? "brak danych")}`
   ].join("\n");
@@ -217,7 +221,7 @@ const formatContextSection = (
   [
     sectionHeader("🧭", `Kontekst meczu ${esc(teamName)}`),
     `- Sredni odpoczynek: ${context.avgRestDays.toFixed(1)} dni`,
-    `- Zmeczenie: ${pct(context.fatigueIndex)}`,
+    `- Zmeczenie: ${pct(context.fatigueIndex)} (0% = wypoczeci, 100% = mocno przemeczeni)`,
     `- Absencje kluczowych (injuries): ${context.absencesCount}`,
     `- Lista absencji: ${context.absences.length > 0 ? esc(context.absences.slice(0, 12).join(", ")) : "brak danych"}`,
     `- Motywacja/stawka: ${pct(context.motivationIndex)}`,
