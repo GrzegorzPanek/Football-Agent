@@ -39,24 +39,6 @@ const resolveDateKeyword = (query: string): string | undefined => {
   return undefined;
 };
 
-const formatGroupedMatches = (title: string, matches: Array<{ homeTeam: string; awayTeam: string; fixtureId: number; league: string }>): string => {
-  const grouped = new Map<string, Array<{ homeTeam: string; awayTeam: string; fixtureId: number }>>();
-  for (const item of matches) {
-    const current = grouped.get(item.league) ?? [];
-    current.push({ homeTeam: item.homeTeam, awayTeam: item.awayTeam, fixtureId: item.fixtureId });
-    grouped.set(item.league, current);
-  }
-
-  const sections: string[] = [title];
-  for (const [league, leagueMatches] of grouped) {
-    sections.push(``, `<b>${league}</b>`);
-    for (const m of leagueMatches) {
-      sections.push(`- ${m.homeTeam} vs ${m.awayTeam} (id: ${m.fixtureId})`);
-    }
-  }
-  return sections.join("\n");
-};
-
 const datePlusDays = (days: number): string => {
   const d = new Date();
   d.setDate(d.getDate() + days);
@@ -157,11 +139,6 @@ export const registerHandlers = (
       await ctx.reply(`Brak meczow na ${dateInput} w top europejskich ligach.`);
       return;
     }
-
-    await ctx.reply(
-      formatGroupedMatches(`Mecze na ${dateInput} (top europejskie ligi):`, matches.slice(0, 120)),
-      { parse_mode: "HTML" }
-    );
 
     const groupedLeagues = groupByLeague(matches);
     const buttons: Array<Array<{ text: string; callback_data: string }>> = [
@@ -383,11 +360,6 @@ export const registerHandlers = (
         await ctx.reply("Nie znaleziono ligi dla tego wyboru.");
         return;
       }
-
-      await ctx.reply(
-        formatGroupedMatches(`Mecze ligi ${selected.league} na ${dateInput}:`, selected.leagueMatches),
-        { parse_mode: "HTML" }
-      );
 
       const buttons: Array<Array<{ text: string; callback_data: string }>> = [
         [{ text: `Analizuj cala lige (${selected.league})`, callback_data: `leagueall:${dateInput}:${leagueIndex}` }],
