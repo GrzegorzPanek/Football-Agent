@@ -30,8 +30,6 @@ const TOP_EUROPEAN_LEAGUE_IDS = new Set<number>([
   848 // UEFA Conference League
 ]);
 
-const EXTRA_LEAGUE_NAME_HINTS = ["superliga"];
-
 const isAllowedPolishLeague = (leagueNameRaw: string, countryRaw: string): boolean => {
   const leagueName = leagueNameRaw.toLowerCase();
   const country = countryRaw.toLowerCase();
@@ -366,8 +364,7 @@ export class MatchRepository {
         const countryName = String(item?.league?.country ?? "");
         return (
           TOP_EUROPEAN_LEAGUE_IDS.has(leagueId) ||
-          isAllowedPolishLeague(leagueName, countryName) ||
-          EXTRA_LEAGUE_NAME_HINTS.some((hint) => leagueName.includes(hint))
+          isAllowedPolishLeague(leagueName, countryName)
         );
       })
       .map((item: any) => {
